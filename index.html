@@ -1,0 +1,1734 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Reseller Central — The Free Reseller Platform</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Press+Start+2P&display=swap" rel="stylesheet"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body,#root{height:100%;font-family:'Inter',sans-serif}
+body{transition:background 0.2s,color 0.2s}
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{border-radius:10px}
+input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none}
+input:-webkit-autofill{transition:background-color 9999s ease-in-out 0s}
+button{font-family:'Inter',sans-serif}
+input,select{font-family:'Inter',sans-serif}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const{useState,useEffect,useCallback}=React;
+
+/* ── THEME ─────────────────────────────────────────────────── */
+const DARK={
+  bg:'#0F0F0F',card:'#1C1C1E',surface:'#2C2C2E',border:'#3A3A3C',
+  text:'#F2F2F7',muted:'#8E8E93',subtleMuted:'#48484A',
+  yellow:'#F5C842',cyan:'#00D4FF',magenta:'#FF2D78',
+  success:'#30D158',warning:'#FF9F0A',danger:'#FF453A',
+  inputBg:'#2C2C2E',navBg:'#1C1C1E',topbar:'#1C1C1E',
+  scrollThumb:'#3A3A3C',shadow:'rgba(0,0,0,0.4)',
+};
+const LIGHT={
+  bg:'#F2F2F7',card:'#FFFFFF',surface:'#F2F2F7',border:'#E5E5EA',
+  text:'#1C1C1E',muted:'#6C6C70',subtleMuted:'#C7C7CC',
+  yellow:'#D4A017',cyan:'#0071E3',magenta:'#C0006A',
+  success:'#28A745',warning:'#E67700',danger:'#DC2626',
+  inputBg:'#FFFFFF',navBg:'#FFFFFF',topbar:'#FFFFFF',
+  scrollThumb:'#C7C7CC',shadow:'rgba(0,0,0,0.08)',
+};
+
+/* ── BRAND COLOURS (fixed regardless of mode) ─────────────── */
+const BRAND={yellow:'#F5C842',cyan:'#00E5FF',magenta:'#FF00CC',dark:'#1A1A1A'};
+
+/* ── MOCK DATA ─────────────────────────────────────────────── */
+const MILEAGE_RATE=0.59;
+const INIT_INV=[
+  {id:1,sku:'RRH-001',title:'Sony PSP 1001 Black Handheld Console',category:'Video Games',brand:'Sony',condition:'Good',qty:1,cost:25,price:89,status:'Listed',platform:'eBay',location:'Shelf A3',daysListed:12},
+  {id:2,sku:'RRH-002',title:"Nike Air Max 90 Men's Sz 10 White Blue",category:'Clothing',brand:'Nike',condition:'Very Good',qty:1,cost:18,price:65,status:'Listed',platform:'Poshmark',location:'Bin B7',daysListed:5},
+  {id:3,sku:'RRH-003',title:'Apple AirPods 3rd Gen MagSafe Case',category:'Electronics',brand:'Apple',condition:'Like New',qty:2,cost:55,price:129,status:'Sold',platform:'eBay',location:'Tote C1',daysListed:3},
+  {id:4,sku:'RRH-004',title:'Lululemon Athletica Tote Bag Black',category:'Clothing',brand:'Lululemon',condition:'Good',qty:1,cost:12,price:45,status:'Unlisted',platform:'-',location:'Rack D2',daysListed:0},
+  {id:5,sku:'RRH-005',title:'Nintendo 64 Console Complete CIB',category:'Video Games',brand:'Nintendo',condition:'Good',qty:1,cost:75,price:185,status:'Listed',platform:'Mercari',location:'Shelf A1',daysListed:8},
+  {id:6,sku:'RRH-006',title:'Vintage Sony Walkman WM-D6C Silver',category:'Electronics',brand:'Sony',condition:'Fair',qty:1,cost:30,price:95,status:'Listed',platform:'eBay',location:'Bin B2',daysListed:45},
+  {id:7,sku:'RRH-007',title:'Polo Ralph Lauren Rugby Shirt XL Red',category:'Clothing',brand:'Ralph Lauren',condition:'Good',qty:1,cost:8,price:35,status:'Sold',platform:'Poshmark',location:'Rack D5',daysListed:7},
+  {id:8,sku:'RRH-008',title:'Sega Genesis Model 1 Console Bundle',category:'Video Games',brand:'Sega',condition:'Good',qty:1,cost:40,price:120,status:'Unlisted',platform:'-',location:'Shelf A4',daysListed:0},
+];
+const INIT_EXP=[
+  {id:1,title:'Shipping Supplies - Bubble Mailers',category:'Shipping Supplies',amount:28.50,date:'2026-06-01',recurring:true},
+  {id:2,title:'Goodwill Sourcing Run',category:'Inventory Purchase',amount:156.00,date:'2026-06-03',recurring:false},
+  {id:3,title:'eBay Store Subscription',category:'Software',amount:27.95,date:'2026-06-01',recurring:true},
+  {id:4,title:'Printer Labels Roll',category:'Shipping Supplies',amount:14.99,date:'2026-06-05',recurring:false},
+  {id:5,title:'Estate Sale Haul',category:'Inventory Purchase',amount:210.00,date:'2026-06-08',recurring:false},
+];
+const INIT_MILE=[
+  {id:1,from:'Home',to:'Goodwill Cedar Springs',miles:8,date:'2026-06-03',purpose:'Sourcing',deduction:4.72},
+  {id:2,from:'Home',to:'UPS Store',miles:3,date:'2026-06-04',purpose:'Shipping Run',deduction:1.77},
+  {id:3,from:'Home',to:'Estate Sale - Maple Ave',miles:14,date:'2026-06-08',purpose:'Sourcing',deduction:8.26},
+];
+const INIT_GOALS=[
+  {id:1,title:'Quick Wins',type:'SALES',description:'Get 5 sales in next 7 days',target:5,current:4,unit:'sales',daysLeft:3,status:'active'},
+  {id:2,title:'Revenue Target',type:'REVENUE',description:'Earn $1,000 this month',target:1000,current:637,unit:'$',daysLeft:18,status:'active'},
+  {id:3,title:'List 50 Items',type:'LISTING',description:'List 50 new items this month',target:50,current:31,unit:'items',daysLeft:18,status:'active'},
+];
+
+/* ── LUCIDE-STYLE SVG ICONS ────────────────────────────────── */
+const Icon=({name,size=18,color='currentColor',strokeWidth=1.75})=>{
+  const s={width:size,height:size,viewBox:'0 0 24 24',fill:'none',stroke:color,strokeWidth,strokeLinecap:'round',strokeLinejoin:'round',display:'inline-block',verticalAlign:'middle',flexShrink:0};
+  const p={
+    home:<svg {...s}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9,22 9,12 15,12 15,22"/></svg>,
+    box:<svg {...s}><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27,6.96 12,12.01 20.73,6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>,
+    calculator:<svg {...s}><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="10" x2="16" y2="10"/><line x1="8" y1="14" x2="12" y2="14"/></svg>,
+    receipt:<svg {...s}><polyline points="1,6 1,22 23,22 23,6"/><path d="M1 6 12 2l11 4"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="8" y1="16" x2="16" y2="16"/></svg>,
+    car:<svg {...s}><path d="M5 17H3a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v9a2 2 0 0 1-2 2h-2"/><circle cx="7.5" cy="17.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>,
+    barchart:<svg {...s}><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>,
+    target:<svg {...s}><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>,
+    warehouse:<svg {...s}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><rect x="8" y="13" width="8" height="9"/></svg>,
+    sun:<svg {...s}><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>,
+    moon:<svg {...s}><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>,
+    menu:<svg {...s}><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>,
+    chevrLeft:<svg {...s}><polyline points="15,18 9,12 15,6"/></svg>,
+    plus:<svg {...s}><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>,
+    search:<svg {...s}><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>,
+    trendUp:<svg {...s}><polyline points="23,6 13.5,15.5 8.5,10.5 1,18"/><polyline points="17,6 23,6 23,12"/></svg>,
+    dollar:<svg {...s}><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>,
+    package:<svg {...s}><path d="M16.5 9.4l-9-5.19"/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27,6.96 12,12.01 20.73,6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>,
+    tag:<svg {...s}><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>,
+    check:<svg {...s}><polyline points="20,6 9,17 4,12"/></svg>,
+    star:<svg {...s}><polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26 12,2"/></svg>,
+    x:<svg {...s}><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>,
+    info:<svg {...s}><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>,
+    alert:<svg {...s}><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>,
+    camera:<svg {...s}><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>,
+    download:<svg {...s}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>,
+    import:<svg {...s}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17,8 12,3 7,8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>,
+    mappin:<svg {...s}><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>,
+    bulb:<svg {...s}><line x1="9" y1="18" x2="15" y2="18"/><line x1="10" y1="22" x2="14" y2="22"/><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"/></svg>,
+    refresh:<svg {...s}><polyline points="23,4 23,10 17,10"/><polyline points="1,20 1,14 7,14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>,
+    trophy:<svg {...s}><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2z"/></svg>,
+    route:<svg {...s}><circle cx="6" cy="19" r="3"/><path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15"/><circle cx="18" cy="5" r="3"/></svg>,
+    qrcode:<svg {...s}><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="3" height="3"/><line x1="17" y1="20" x2="20" y2="20"/><line x1="20" y1="17" x2="20" y2="20"/></svg>,
+    scan:<svg {...s}><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><line x1="7" y1="12" x2="17" y2="12"/></svg>,
+    flame:<svg {...s}><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>,
+    chevronRight:<svg {...s}><polyline points="9,18 15,12 9,6"/></svg>,
+    trash:<svg {...s}><polyline points="3,6 5,6 21,6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>,
+  };
+  return p[name]||<svg {...s}><circle cx="12" cy="12" r="10"/></svg>;
+};
+
+/* ── LOGO SVG ─────────────────────────────────────────────── */
+function LogoSVG({size=40}){
+  return(
+    <svg width={size*3.2} height={size} viewBox="0 0 320 100" style={{display:'block'}}>
+      {/* Play button arrow shape — dashed magenta outline */}
+      <polygon points="160,5 255,5 255,0 300,50 255,100 255,95 160,95"
+        fill="none" stroke={BRAND.magenta} strokeWidth="3.5" strokeDasharray="7,3.5"/>
+      {/* Cyan inner stroke */}
+      <polygon points="162,9 251,9 251,4 293,50 251,96 251,91 162,91"
+        fill="none" stroke={BRAND.cyan} strokeWidth="1.8"/>
+      {/* "RESELLER CENTRAL" logo text */}
+      <text x="8" y="44" style={{fontFamily:"'Press Start 2P',monospace",fontSize:'13px',fontWeight:'bold',fill:BRAND.yellow,
+        paintOrder:'stroke',stroke:'#1a1a1a',strokeWidth:'4',strokeLinejoin:'round'}}>RESELLER</text>
+      <text x="8" y="70" style={{fontFamily:"'Press Start 2P',monospace",fontSize:'13px',fontWeight:'bold',fill:BRAND.yellow,
+        paintOrder:'stroke',stroke:'#1a1a1a',strokeWidth:'4',strokeLinejoin:'round'}}>CENTRAL</text>
+      {/* Cyan offset for 3-D effect */}
+      <text x="6" y="42" style={{fontFamily:"'Press Start 2P',monospace",fontSize:'13px',fontWeight:'bold',fill:BRAND.cyan,opacity:0.5}}>RESELLER</text>
+      <text x="6" y="68" style={{fontFamily:"'Press Start 2P',monospace",fontSize:'13px',fontWeight:'bold',fill:BRAND.cyan,opacity:0.5}}>CENTRAL</text>
+      {/* Magenta shadow */}
+      <text x="10" y="46" style={{fontFamily:"'Press Start 2P',monospace",fontSize:'13px',fontWeight:'bold',fill:BRAND.magenta,opacity:0.4}}>RESELLER</text>
+      <text x="10" y="72" style={{fontFamily:"'Press Start 2P',monospace",fontSize:'13px',fontWeight:'bold',fill:BRAND.magenta,opacity:0.4}}>CENTRAL</text>
+      {/* HUB in cyan */}
+      <text x="90" y="89" style={{fontFamily:"'Press Start 2P',monospace",fontSize:'11px',fill:BRAND.cyan,
+        paintOrder:'stroke',stroke:'#1a1a1a',strokeWidth:'2.5',strokeLinejoin:'round'}}>·RC·</text>
+      <text x="88" y="87" style={{fontFamily:"'Press Start 2P',monospace",fontSize:'11px',fill:BRAND.cyan,opacity:0.4}}>·RC·</text>
+    </svg>
+  );
+}
+
+/* Small icon-only logo for collapsed sidebar */
+function LogoMark({size=36}){
+  return(
+    <svg width={size} height={size} viewBox="0 0 100 100" style={{display:'block'}}>
+      <polygon points="10,5 72,5 72,0 98,50 72,100 72,95 10,95"
+        fill={BRAND.dark} stroke={BRAND.magenta} strokeWidth="4" strokeDasharray="8,4"/>
+      <polygon points="12,9 70,9 70,4 93,50 70,96 70,91 12,91"
+        fill="none" stroke={BRAND.cyan} strokeWidth="2"/>
+      <text x="14" y="47" style={{fontFamily:"'Press Start 2P',monospace",fontSize:'18px',fill:BRAND.yellow,
+        paintOrder:'stroke',stroke:'#1a1a1a',strokeWidth:'3',strokeLinejoin:'round'}}>RC</text>
+      <text x="14" y="70" style={{fontFamily:"'Press Start 2P',monospace",fontSize:'13px',fill:BRAND.cyan,
+        paintOrder:'stroke',stroke:'#1a1a1a',strokeWidth:'2.5',strokeLinejoin:'round'}}>·RC·</text>
+    </svg>
+  );
+}
+
+/* ── SHARED UI ──────────────────────────────────────────────── */
+function StatCard({label,value,sub,accent,icon,T}){
+  return(
+    <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:16,padding:'16px 18px',flex:1,minWidth:120,
+      boxShadow:`0 1px 4px ${T.shadow}`}}>
+      <div style={{width:36,height:36,borderRadius:10,background:accent+'18',display:'flex',alignItems:'center',
+        justifyContent:'center',marginBottom:10}}>
+        <Icon name={icon} size={18} color={accent}/>
+      </div>
+      <div style={{fontSize:22,fontWeight:800,color:T.text,letterSpacing:-0.5}}>{value}</div>
+      <div style={{fontSize:12,fontWeight:500,color:T.muted,marginTop:2}}>{label}</div>
+      {sub&&<div style={{fontSize:11,color:T.muted,marginTop:1}}>{sub}</div>}
+    </div>
+  );
+}
+
+function Badge({text,color,T}){
+  return(
+    <span style={{background:color+'1A',color,border:`1px solid ${color}30`,borderRadius:20,
+      padding:'3px 10px',fontSize:11,fontWeight:600,display:'inline-block',whiteSpace:'nowrap'}}>
+      {text}
+    </span>
+  );
+}
+
+function Btn({children,onClick,variant='primary',small=false,disabled=false,icon,T}){
+  const base={borderRadius:10,fontWeight:600,cursor:disabled?'not-allowed':'pointer',
+    opacity:disabled?0.5:1,transition:'all 0.15s',display:'inline-flex',alignItems:'center',
+    justifyContent:'center',gap:6,border:'none',fontFamily:"'Inter',sans-serif"};
+  const sz=small?{padding:'7px 14px',fontSize:13}:{padding:'10px 20px',fontSize:14};
+  const variants={
+    primary:{...base,...sz,background:BRAND.yellow,color:'#111',fontWeight:700},
+    secondary:{...base,...sz,background:'transparent',color:T?T.cyan||BRAND.cyan:BRAND.cyan,
+      border:`1.5px solid ${T?T.cyan||BRAND.cyan:BRAND.cyan}`},
+    ghost:{...base,...sz,background:T?T.surface:'#f2f2f7',color:T?T.muted:'#666',
+      border:`1px solid ${T?T.border:'#e5e5ea'}`},
+    danger:{...base,...sz,background:'#FF453A18',color:'#FF453A',border:'1px solid #FF453A30'},
+  };
+  return(
+    <button onClick={onClick} disabled={disabled} style={variants[variant]||variants.primary}>
+      {icon&&<Icon name={icon} size={small?14:16} color={variants[variant]?.color||'#111'}/>}
+      {children}
+    </button>
+  );
+}
+
+function Field({label,value,onChange,type='text',prefix,T}){
+  return(
+    <div style={{marginBottom:14}}>
+      {label&&<div style={{fontSize:12,fontWeight:600,color:T.muted,marginBottom:6,letterSpacing:0.3}}>{label}</div>}
+      <div style={{display:'flex',alignItems:'center',background:T.inputBg,border:`1.5px solid ${T.border}`,
+        borderRadius:10,overflow:'hidden',transition:'border-color 0.15s'}}>
+        {prefix&&<span style={{padding:'0 12px',color:T.muted,fontSize:14,fontWeight:500,flexShrink:0}}>{prefix}</span>}
+        <input type={type} value={value} onChange={e=>onChange(e.target.value)}
+          style={{background:'transparent',border:'none',outline:'none',color:T.text,
+            padding:'10px 14px',fontSize:14,width:'100%',fontFamily:"'Inter',sans-serif"}}/>
+      </div>
+    </div>
+  );
+}
+
+function ProgressBar({pct,color,T}){
+  return(
+    <div style={{background:T.surface,borderRadius:20,height:7,overflow:'hidden'}}>
+      <div style={{width:`${Math.min(pct,100)}%`,height:'100%',background:color,borderRadius:20,transition:'width 0.5s ease'}}/>
+    </div>
+  );
+}
+
+function Modal({show,onClose,title,children,width=480,T}){
+  if(!show)return null;
+  return(
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.6)',display:'flex',alignItems:'center',
+      justifyContent:'center',zIndex:300,backdropFilter:'blur(4px)'}} onClick={onClose}>
+      <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:20,padding:28,
+        width,maxHeight:'88vh',overflowY:'auto',boxShadow:`0 20px 60px rgba(0,0,0,0.3)`}} onClick={e=>e.stopPropagation()}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:22}}>
+          <div style={{fontSize:17,fontWeight:700,color:T.text}}>{title}</div>
+          <button onClick={onClose} style={{background:T.surface,border:'none',borderRadius:8,padding:6,
+            cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}>
+            <Icon name="x" size={16} color={T.muted}/>
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function SectionLabel({text,T}){
+  return <div style={{fontSize:12,fontWeight:700,color:T.muted,letterSpacing:0.8,textTransform:'uppercase',marginBottom:12}}>{text}</div>;
+}
+
+/* ── SIDEBAR NAV ────────────────────────────────────────────── */
+const NAV_ITEMS=[
+  {id:'home',label:'Home',icon:'home'},
+  {id:'inventory',label:'Inventory',icon:'box'},
+  {id:'profit',label:'Calculator',icon:'calculator'},
+  {id:'expenses',label:'Expenses',icon:'receipt'},
+  {id:'mileage',label:'Mileage',icon:'car'},
+  {id:'reports',label:'Reports',icon:'barchart'},
+  {id:'goals',label:'Goals',icon:'target'},
+  {id:'storage',label:'Storage',icon:'warehouse'},
+  {id:'labels',label:'Labels',icon:'label'},
+  {id:'export',label:'Import / Export',icon:'layers'},
+];
+
+function Sidebar({active,onNav,col,setCol,T,dark,setDark,biz}){
+  return(
+    <div style={{width:col?68:230,background:T.navBg,borderRight:`1px solid ${T.border}`,
+      display:'flex',flexDirection:'column',flexShrink:0,transition:'width 0.22s ease',
+      overflow:'hidden',boxShadow:`2px 0 8px ${T.shadow}`}}>
+
+      {/* Logo area */}
+      <div style={{padding:'18px 16px 14px',borderBottom:`1px solid ${T.border}`,minWidth:230}}>
+        {col
+          ? <div style={{display:'flex',justifyContent:'center'}}><LogoMark size={38}/></div>
+          : <LogoSVG size={44}/>
+        }
+      </div>
+
+      {/* Nav items */}
+      <nav style={{flex:1,padding:'10px 8px',overflowY:'auto'}}>
+        {NAV_ITEMS.map(n=>{
+          const isActive=active===n.id;
+          return(
+            <button key={n.id} onClick={()=>onNav(n.id)} title={n.label} style={{
+              width:'100%',textAlign:'left',background:isActive?BRAND.yellow+'18':'transparent',
+              border:'none',borderRadius:11,color:isActive?BRAND.yellow:T.muted,
+              padding:col?'11px 0':'11px 13px',fontSize:14,fontWeight:isActive?700:500,
+              cursor:'pointer',display:'flex',alignItems:'center',
+              gap:col?0:10,justifyContent:col?'center':'flex-start',
+              marginBottom:2,transition:'all 0.15s',whiteSpace:'nowrap',
+              boxShadow:isActive?`inset 3px 0 0 ${BRAND.yellow}`:'none',
+            }}>
+              <Icon name={n.icon} size={18} color={isActive?BRAND.yellow:T.muted}/>
+              {!col&&<span>{n.label}</span>}
+            </button>
+          );
+        })}
+      </nav>
+
+      {/* Bottom controls */}
+      <div style={{padding:'12px 8px',borderTop:`1px solid ${T.border}`}}>
+        {/* Dark/Light toggle */}
+        <button onClick={()=>setDark(!dark)} title={dark?'Light mode':'Dark mode'} style={{
+          width:'100%',background:T.surface,border:`1px solid ${T.border}`,borderRadius:11,
+          padding:col?'10px 0':'10px 13px',cursor:'pointer',display:'flex',
+          alignItems:'center',gap:col?0:10,justifyContent:col?'center':'flex-start',
+          color:T.muted,fontSize:13,fontWeight:500,fontFamily:"'Inter',sans-serif",marginBottom:6,
+          transition:'all 0.15s',
+        }}>
+          <Icon name={dark?'sun':'moon'} size={17} color={dark?BRAND.yellow:T.muted}/>
+          {!col&&<span>{dark?'Light Mode':'Dark Mode'}</span>}
+        </button>
+        {/* Collapse toggle */}
+        <button onClick={()=>setCol(!col)} style={{
+          width:'100%',background:'transparent',border:'none',borderRadius:11,
+          padding:col?'8px 0':'8px 13px',cursor:'pointer',display:'flex',
+          alignItems:'center',gap:col?0:10,justifyContent:col?'center':'flex-start',
+          color:T.subtleMuted,fontSize:12,fontFamily:"'Inter',sans-serif",
+        }}>
+          <Icon name={col?'chevronRight':'chevrLeft'} size={15} color={T.subtleMuted}/>
+          {!col&&<span>Collapse</span>}
+        </button>
+        {!col&&<div style={{paddingLeft:4,marginTop:8}}>
+          <div style={{fontSize:12,fontWeight:700,color:T.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:190}}>{biz&&biz.name?biz.name:'My Reseller Shop'}</div>
+          <div style={{fontSize:10,color:T.muted,marginTop:1}}>Reseller Central v1.0</div>
+        </div>}
+      </div>
+    </div>
+  );
+}
+
+/* ── HOME ───────────────────────────────────────────────────── */
+function HomePage({inventory,expenses,mileage,goals,T,onNav}){
+  const listed=inventory.filter(i=>i.status==='Listed').length;
+  const sold=inventory.filter(i=>i.status==='Sold').length;
+  const unlisted=inventory.filter(i=>i.status==='Unlisted').length;
+  const revenue=inventory.filter(i=>i.status==='Sold').reduce((s,i)=>s+i.price*i.qty,0);
+  const profit=inventory.filter(i=>i.status==='Sold').reduce((s,i)=>s+(i.price-i.cost)*i.qty,0);
+  const expTotal=expenses.reduce((s,e)=>s+e.amount,0);
+  const invValue=inventory.reduce((s,i)=>s+i.cost*i.qty,0);
+  const sellThru=(sold+listed)>0?Math.round((sold/(sold+listed))*100):0;
+  const aging=inventory.filter(i=>i.daysListed>30&&i.status==='Listed').length;
+  const activeGoal=goals.find(g=>g.status==='active');
+
+  return(
+    <div style={{padding:'24px 28px',overflowY:'auto',flex:1}}>
+      <div style={{marginBottom:22}}>
+        <div style={{fontSize:26,fontWeight:800,color:T.text,letterSpacing:-0.5}}>Dashboard</div>
+        <div style={{fontSize:13,color:T.muted,marginTop:3}}>Friday, June 12, 2026</div>
+      </div>
+
+      {/* Funnel card */}
+      <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:18,padding:'20px 24px',
+        marginBottom:16,boxShadow:`0 1px 6px ${T.shadow}`}}>
+        <div style={{display:'flex',justifyContent:'space-around',alignItems:'center'}}>
+          {[[unlisted,'Unlisted',T.warning],[listed,'Listed',T.cyan],[sold,'Sold',T.success]].map(([n,lb,col],i,a)=>(
+            <React.Fragment key={lb}>
+              <div style={{textAlign:'center'}}>
+                <div style={{fontSize:38,fontWeight:900,color:col,letterSpacing:-1}}>{n}</div>
+                <div style={{fontSize:12,fontWeight:600,color:T.muted,marginTop:2}}>{lb}</div>
+              </div>
+              {i<a.length-1&&<div style={{color:T.subtleMuted,fontSize:18,fontWeight:300}}>→</div>}
+            </React.Fragment>
+          ))}
+        </div>
+        <div style={{display:'flex',justifyContent:'space-between',marginTop:16,paddingTop:14,
+          borderTop:`1px solid ${T.border}`,flexWrap:'wrap',gap:8}}>
+          <span style={{fontSize:13,color:T.muted}}>Total Active: <b style={{color:T.text,fontWeight:700}}>{inventory.length}</b></span>
+          {aging>0&&<span style={{fontSize:13,color:T.warning,fontWeight:600,display:'flex',alignItems:'center',gap:4}}>
+            <Icon name="alert" size={14} color={T.warning}/>  {aging} Aging Items
+          </span>}
+          <span style={{fontSize:13,color:T.muted}}>Sell-Through: <b style={{color:T.success,fontWeight:700}}>{sellThru}%</b></span>
+        </div>
+      </div>
+
+      {/* Quick actions */}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10,marginBottom:16}}>
+        {[['camera','AI Scan',T.cyan],['scan','Barcode',T.warning],['import','Import',T.success],['receipt','Expense',BRAND.yellow]].map(([ic,lb,col])=>(
+          <button key={lb} style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:'14px 8px',
+            cursor:'pointer',color:T.text,fontSize:13,fontWeight:600,display:'flex',flexDirection:'column',
+            alignItems:'center',gap:8,boxShadow:`0 1px 4px ${T.shadow}`,transition:'all 0.15s',
+            fontFamily:"'Inter',sans-serif"}}>
+            <div style={{width:36,height:36,borderRadius:10,background:col+'18',display:'flex',alignItems:'center',justifyContent:'center'}}>
+              <Icon name={ic} size={18} color={col}/>
+            </div>
+            {lb}
+          </button>
+        ))}
+      </div>
+
+      {/* Stats grid */}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(130px,1fr))',gap:10,marginBottom:16}}>
+        <StatCard label="Total Revenue" value={`$${revenue.toLocaleString()}`} accent={T.success} icon="trendUp" T={T}/>
+        <StatCard label="Net Profit" value={`$${profit.toLocaleString()}`} accent={BRAND.yellow} icon="dollar" T={T}/>
+        <StatCard label="Inventory Value" value={`$${invValue.toLocaleString()}`} accent={T.cyan} icon="package" T={T}/>
+        <StatCard label="Expenses YTD" value={`$${expTotal.toFixed(0)}`} accent={T.danger} icon="receipt" T={T}/>
+      </div>
+
+      {/* Performance meter */}
+      <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:18,padding:'18px 22px',
+        marginBottom:16,boxShadow:`0 1px 6px ${T.shadow}`}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+          <div style={{fontSize:15,fontWeight:700,color:T.text}}>Your Performance</div>
+          <Icon name="info" size={15} color={T.muted}/>
+        </div>
+        <div style={{display:'flex',justifyContent:'space-between',fontSize:11,fontWeight:600,color:T.subtleMuted,marginBottom:8,letterSpacing:0.5,textTransform:'uppercase'}}>
+          <span>Collecting</span><span>Selling</span><span>Pro</span>
+        </div>
+        <div style={{position:'relative',paddingTop:18}}>
+          <div style={{position:'absolute',top:2,left:`${Math.max(2,Math.min(97,sellThru))}%`,transform:'translateX(-50%)',color:BRAND.yellow,fontSize:12}}>▼</div>
+          <ProgressBar pct={sellThru} color={BRAND.yellow} T={T}/>
+        </div>
+        <div style={{fontSize:13,color:T.cyan,marginTop:10,textAlign:'center',fontWeight:500}}>
+          {sellThru>=50?'Great sell-through rate — keep it up! 🔥':'Focus on listing unlisted inventory to improve.'}
+        </div>
+      </div>
+
+      {/* Active challenge */}
+      {activeGoal&&(
+        <div style={{background:T.card,border:`1.5px solid ${BRAND.yellow}40`,borderRadius:18,padding:'18px 22px',
+          marginBottom:16,boxShadow:`0 1px 6px ${T.shadow}`}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
+            <Badge text="⭐  CHALLENGE" color={BRAND.yellow} T={T}/>
+            <span style={{fontSize:12,color:T.warning,fontWeight:600}}>{activeGoal.daysLeft} days left</span>
+          </div>
+          <div style={{fontSize:16,fontWeight:700,color:T.text,marginBottom:4}}>{activeGoal.title}</div>
+          <div style={{fontSize:13,color:T.muted,marginBottom:14}}>{activeGoal.description}</div>
+          <ProgressBar pct={(activeGoal.current/activeGoal.target)*100} color={BRAND.yellow} T={T}/>
+          <div style={{display:'flex',justifyContent:'space-between',marginTop:8,fontSize:13}}>
+            <span style={{color:T.muted}}>{activeGoal.current} of {activeGoal.target} {activeGoal.unit}</span>
+            <span style={{color:BRAND.yellow,fontWeight:700}}>{Math.round((activeGoal.current/activeGoal.target)*100)}%</span>
+          </div>
+        </div>
+      )}
+
+      {/* Recent activity */}
+      <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:18,padding:'18px 22px',
+        boxShadow:`0 1px 6px ${T.shadow}`}}>
+        <SectionLabel text="Recent Activity" T={T}/>
+        {inventory.slice(0,5).map((item,idx)=>(
+          <div key={item.id} style={{display:'flex',alignItems:'center',gap:14,padding:'11px 0',
+            borderBottom:idx<4?`1px solid ${T.border}`:'none'}}>
+            <div style={{width:40,height:40,borderRadius:10,background:T.surface,display:'flex',
+              alignItems:'center',justifyContent:'center',fontSize:20,flexShrink:0}}>
+              {item.category==='Video Games'?'🎮':item.category==='Electronics'?'📱':item.category==='Clothing'?'👕':'📦'}
+            </div>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:13,color:T.text,fontWeight:600,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{item.title}</div>
+              <div style={{fontSize:11,color:T.muted,marginTop:1}}>{item.category} · {item.platform}</div>
+            </div>
+            <div style={{textAlign:'right',flexShrink:0}}>
+              <div style={{fontSize:14,fontWeight:700,color:T.text}}>${item.price}</div>
+              <Badge text={item.status} color={item.status==='Sold'?T.success:item.status==='Listed'?T.cyan:T.warning} T={T}/>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ── INVENTORY ──────────────────────────────────────────────── */
+function InventoryPage({inventory,setInventory,T}){
+  const [filter,setFilter]=useState('All');
+  const [search,setSearch]=useState('');
+  const [showAdd,setShowAdd]=useState(false);
+  const blank={title:'',category:'',brand:'',cost:'',price:'',qty:'1',condition:'Good',status:'Unlisted',platform:'-',location:''};
+  const [ni,setNi]=useState(blank);
+  const statuses=['All','Unlisted','Listed','Sold','Returned'];
+  const filtered=inventory.filter(i=>(filter==='All'||i.status===filter)&&(!search||i.title.toLowerCase().includes(search.toLowerCase())||i.sku.toLowerCase().includes(search.toLowerCase())));
+
+  function addItem(){
+    const id=inventory.length+1;
+    setInventory([...inventory,{...ni,id,sku:`RC-${String(id).padStart(3,'0')}`,cost:parseFloat(ni.cost)||0,price:parseFloat(ni.price)||0,qty:parseInt(ni.qty)||1,daysListed:0}]);
+    setNi(blank);setShowAdd(false);
+  }
+
+  const statusColor={Listed:T.cyan,Sold:T.success,Unlisted:T.warning,Returned:T.danger,Archived:T.muted};
+
+  return(
+    <div style={{padding:'24px 28px',overflowY:'auto',flex:1}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
+        <div style={{fontSize:26,fontWeight:800,color:T.text,letterSpacing:-0.5}}>Inventory</div>
+        <Btn onClick={()=>setShowAdd(true)} icon="plus" T={T}>Add Item</Btn>
+      </div>
+
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(110px,1fr))',gap:10,marginBottom:18}}>
+        <StatCard label="Total Items" value={inventory.length} accent={T.cyan} icon="box" T={T}/>
+        <StatCard label="Listed" value={inventory.filter(i=>i.status==='Listed').length} accent={BRAND.yellow} icon="tag" T={T}/>
+        <StatCard label="Sold" value={inventory.filter(i=>i.status==='Sold').length} accent={T.success} icon="check" T={T}/>
+        <StatCard label="Inv. Value" value={`$${inventory.reduce((s,i)=>s+i.cost,0).toFixed(0)}`} accent={BRAND.magenta} icon="dollar" T={T}/>
+      </div>
+
+      {/* Search + filters */}
+      <div style={{display:'flex',gap:10,marginBottom:14,flexWrap:'wrap'}}>
+        <div style={{flex:1,minWidth:200,display:'flex',alignItems:'center',background:T.inputBg,
+          border:`1.5px solid ${T.border}`,borderRadius:12,padding:'0 14px',gap:8}}>
+          <Icon name="search" size={16} color={T.muted}/>
+          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search inventory…"
+            style={{background:'transparent',border:'none',outline:'none',color:T.text,padding:'10px 0',fontSize:14,width:'100%',fontFamily:"'Inter',sans-serif"}}/>
+        </div>
+        <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+          {statuses.map(s=>(
+            <button key={s} onClick={()=>setFilter(s)} style={{background:filter===s?BRAND.yellow:T.surface,
+              color:filter===s?'#111':T.muted,border:`1px solid ${filter===s?BRAND.yellow:T.border}`,
+              borderRadius:20,padding:'7px 14px',fontSize:13,fontWeight:600,cursor:'pointer',
+              fontFamily:"'Inter',sans-serif",transition:'all 0.15s'}}>{s}</button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{display:'flex',flexDirection:'column',gap:8}}>
+        {filtered.map(item=>(
+          <div key={item.id} style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,
+            padding:'14px 18px',display:'flex',alignItems:'center',gap:14,
+            boxShadow:`0 1px 3px ${T.shadow}`,transition:'border-color 0.15s'}}>
+            <div style={{width:44,height:44,borderRadius:12,background:T.surface,display:'flex',
+              alignItems:'center',justifyContent:'center',fontSize:22,flexShrink:0}}>
+              {item.category==='Video Games'?'🎮':item.category==='Electronics'?'📱':item.category==='Clothing'?'👕':'📦'}
+            </div>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:14,fontWeight:600,color:T.text,marginBottom:5,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{item.title}</div>
+              <div style={{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap'}}>
+                <span style={{fontSize:12,color:T.muted}}>{item.category}</span>
+                <Badge text={item.sku} color={BRAND.magenta} T={T}/>
+                {item.platform!=='-'&&<Badge text={item.platform} color={T.cyan} T={T}/>}
+                {item.daysListed>30&&<Badge text={`${item.daysListed}d aging`} color={T.danger} T={T}/>}
+              </div>
+            </div>
+            <div style={{textAlign:'right',flexShrink:0}}>
+              <div style={{fontSize:16,fontWeight:800,color:T.text}}>${item.price}</div>
+              <div style={{fontSize:11,color:T.muted,margin:'2px 0 5px'}}>cost ${item.cost}</div>
+              <Badge text={item.status} color={statusColor[item.status]||T.muted} T={T}/>
+            </div>
+          </div>
+        ))}
+        {filtered.length===0&&(
+          <div style={{textAlign:'center',padding:60,color:T.muted}}>
+            <Icon name="box" size={48} color={T.subtleMuted}/>
+            <div style={{marginTop:14,fontSize:15,fontWeight:600}}>No items found</div>
+            <div style={{fontSize:13,marginTop:4}}>Add your first inventory item!</div>
+          </div>
+        )}
+      </div>
+
+      <Modal show={showAdd} onClose={()=>setShowAdd(false)} title="Add New Item" T={T}>
+        <Field label="Title" value={ni.title} onChange={v=>setNi({...ni,title:v})} T={T}/>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+          <Field label="Category" value={ni.category} onChange={v=>setNi({...ni,category:v})} T={T}/>
+          <Field label="Brand" value={ni.brand} onChange={v=>setNi({...ni,brand:v})} T={T}/>
+        </div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 80px',gap:12}}>
+          <Field label="Cost" value={ni.cost} onChange={v=>setNi({...ni,cost:v})} type="number" prefix="$" T={T}/>
+          <Field label="Price" value={ni.price} onChange={v=>setNi({...ni,price:v})} type="number" prefix="$" T={T}/>
+          <Field label="Qty" value={ni.qty} onChange={v=>setNi({...ni,qty:v})} type="number" T={T}/>
+        </div>
+        <Field label="Storage Location" value={ni.location} onChange={v=>setNi({...ni,location:v})} T={T}/>
+        <div style={{display:'flex',gap:10,marginTop:6}}>
+          <Btn variant="ghost" onClick={()=>setShowAdd(false)} T={T}>Cancel</Btn>
+          <Btn onClick={addItem} T={T}>Save Item</Btn>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
+/* ── PROFIT CALCULATOR ──────────────────────────────────────── */
+function ProfitPage({T}){
+  const [cost,setCost]=useState('25.00');
+  const [price,setPrice]=useState('64.00');
+  const [ship,setShip]=useState('5.99');
+  const [pack,setPack]=useState('1.50');
+  const [platform,setPlatform]=useState('eBay');
+  const fees={eBay:0.1315,Poshmark:0.20,Mercari:0.10,Etsy:0.065,'FB Marketplace':0.0,Whatnot:0.08};
+  const platforms=Object.keys(fees);
+  const sp=parseFloat(price)||0,ic=parseFloat(cost)||0,sc=parseFloat(ship)||0,pc=parseFloat(pack)||0;
+  const fee=sp*(fees[platform]||0),net=sp-ic-sc-pc-fee;
+  const roi=ic>0?(net/ic)*100:0,margin=sp>0?(net/sp)*100:0,be=ic+sc+pc+fee;
+  const stars=roi>=80?4:roi>=50?3:roi>=20?2:1;
+  const best=platforms.reduce((b,p)=>{const n=sp-ic-sc-pc-sp*fees[p];return n>b.profit?{platform:p,profit:n}:b},{platform,profit:net});
+
+  return(
+    <div style={{padding:'24px 28px',overflowY:'auto',flex:1}}>
+      <div style={{fontSize:26,fontWeight:800,color:T.text,letterSpacing:-0.5,marginBottom:22}}>Profit Calculator</div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(270px,1fr))',gap:20}}>
+
+        {/* Result */}
+        <div>
+          <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:20,padding:26,marginBottom:14,
+            textAlign:'center',boxShadow:`0 2px 8px ${T.shadow}`}}>
+            <div style={{display:'flex',justifyContent:'center',gap:4,marginBottom:14}}>
+              {[1,2,3,4,5].map(s=><Icon key={s} name="star" size={22} color={s<=stars?BRAND.yellow:T.border}
+                strokeWidth={s<=stars?0:1.5}/>)}
+            </div>
+            <div style={{fontSize:12,fontWeight:600,color:T.muted,marginBottom:4,letterSpacing:0.5,textTransform:'uppercase'}}>Net Profit</div>
+            <div style={{fontSize:50,fontWeight:900,color:net>=0?T.success:T.danger,letterSpacing:-2}}>
+              {net>=0?'$':'-$'}{Math.abs(net).toFixed(2)}
+            </div>
+            <div style={{fontSize:13,color:T.muted,marginTop:6}}>Platform fee: <b style={{color:T.text}}>${fee.toFixed(2)}</b></div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:12,marginTop:18,paddingTop:18,borderTop:`1px solid ${T.border}`}}>
+              {[['Margin',margin.toFixed(1)+'%',BRAND.yellow],['ROI',roi.toFixed(1)+'%',T.cyan],['Platform',platform,BRAND.magenta]].map(([l,v,col])=>(
+                <div key={l}><div style={{fontSize:11,color:T.muted,fontWeight:600,textTransform:'uppercase',letterSpacing:0.4}}>{l}</div>
+                <div style={{fontSize:18,fontWeight:800,color:col,marginTop:3}}>{v}</div></div>
+              ))}
+            </div>
+            {best.platform!==platform&&(
+              <div style={{marginTop:16,background:T.cyan+'12',border:`1px solid ${T.cyan}30`,borderRadius:12,
+                padding:'12px 16px',display:'flex',alignItems:'center',gap:10}}>
+                <Icon name="bulb" size={18} color={T.cyan}/>
+                <div style={{flex:1,textAlign:'left'}}>
+                  <div style={{fontSize:11,color:T.muted,fontWeight:500}}>Better Option Available</div>
+                  <div style={{fontSize:13,fontWeight:700,color:T.cyan}}>{best.platform} <span style={{color:T.success}}>+${(best.profit-net).toFixed(2)}</span></div>
+                </div>
+                <Icon name="chevronRight" size={14} color={T.muted}/>
+              </div>
+            )}
+          </div>
+          <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:16,padding:20,boxShadow:`0 1px 4px ${T.shadow}`}}>
+            <SectionLabel text="Break-Even Analysis" T={T}/>
+            {[['Break-Even Price',`$${be.toFixed(2)}`,T.warning],['Quick Sale (−20%)',`$${(sp*0.8).toFixed(2)}`,T.muted],
+              ['Market Price',`$${sp.toFixed(2)}`,T.cyan],['Premium (+15%)',`$${(sp*1.15).toFixed(2)}`,T.success]].map(([l,v,col])=>(
+              <div key={l} style={{display:'flex',justifyContent:'space-between',padding:'8px 0',borderBottom:`1px solid ${T.border}`}}>
+                <span style={{fontSize:13,color:T.muted}}>{l}</span>
+                <span style={{fontSize:13,fontWeight:700,color:col}}>{v}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Inputs */}
+        <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:20,padding:24,boxShadow:`0 2px 8px ${T.shadow}`}}>
+          <SectionLabel text="Platform" T={T}/>
+          <div style={{display:'flex',gap:7,flexWrap:'wrap',marginBottom:22}}>
+            {platforms.map(p=>(
+              <button key={p} onClick={()=>setPlatform(p)} style={{background:platform===p?BRAND.yellow:T.surface,
+                color:platform===p?'#111':T.muted,border:`1px solid ${platform===p?BRAND.yellow:T.border}`,
+                borderRadius:20,padding:'6px 14px',fontSize:13,fontWeight:600,cursor:'pointer',
+                fontFamily:"'Inter',sans-serif",transition:'all 0.15s'}}>{p}</button>
+            ))}
+          </div>
+          <Field label="Item Cost" value={cost} onChange={setCost} type="number" prefix="$" T={T}/>
+          <Field label="Sale Price" value={price} onChange={setPrice} type="number" prefix="$" T={T}/>
+          <Field label="Shipping Cost" value={ship} onChange={setShip} type="number" prefix="$" T={T}/>
+          <Field label="Packaging Cost" value={pack} onChange={setPack} type="number" prefix="$" T={T}/>
+          <div style={{background:T.surface,borderRadius:12,padding:16}}>
+            <SectionLabel text="Fee Breakdown" T={T}/>
+            {[['Gross Revenue',`$${sp.toFixed(2)}`,''],
+              [`${platform} Fee (${(fees[platform]*100).toFixed(1)}%)`,`−$${fee.toFixed(2)}`,''],
+              ['Shipping',`−$${sc.toFixed(2)}`,''],['Packaging',`−$${pc.toFixed(2)}`,''],['Item Cost',`−$${ic.toFixed(2)}`,'']].map(([l,v])=>(
+              <div key={l} style={{display:'flex',justifyContent:'space-between',padding:'5px 0',fontSize:13,color:T.muted}}>
+                <span>{l}</span><span>{v}</span>
+              </div>
+            ))}
+            <div style={{display:'flex',justifyContent:'space-between',padding:'10px 0 0',borderTop:`1px solid ${T.border}`,marginTop:6}}>
+              <span style={{fontSize:14,fontWeight:700,color:T.text}}>Net Profit</span>
+              <span style={{fontSize:15,fontWeight:800,color:net>=0?T.success:T.danger}}>{net>=0?'$':'−$'}{Math.abs(net).toFixed(2)}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── EXPENSES ───────────────────────────────────────────────── */
+function ExpensesPage({expenses,setExpenses,T}){
+  const [showAdd,setShowAdd]=useState(false);
+  const today=new Date().toISOString().split('T')[0];
+  const blank={title:'',category:'Shipping Supplies',amount:'',date:today};
+  const [ne,setNe]=useState(blank);
+  const cats=['Shipping Supplies','Inventory Purchase','Software','Transportation','Equipment','Other'];
+  const total=expenses.reduce((s,e)=>s+e.amount,0);
+  const thisMonth=expenses.filter(e=>e.date.startsWith('2026-06')).reduce((s,e)=>s+e.amount,0);
+  const bd=cats.map(c=>({cat:c,total:expenses.filter(e=>e.category===c).reduce((s,e)=>s+e.amount,0)})).filter(c=>c.total>0).sort((a,b)=>b.total-a.total);
+  function addExp(){setExpenses([...expenses,{...ne,id:expenses.length+1,amount:parseFloat(ne.amount)||0}]);setNe(blank);setShowAdd(false);}
+
+  return(
+    <div style={{padding:'24px 28px',overflowY:'auto',flex:1}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
+        <div style={{fontSize:26,fontWeight:800,color:T.text,letterSpacing:-0.5}}>Expenses</div>
+        <Btn onClick={()=>setShowAdd(true)} icon="plus" T={T}>Add Expense</Btn>
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(120px,1fr))',gap:10,marginBottom:18}}>
+        <StatCard label="Total YTD" value={`$${total.toFixed(2)}`} accent={T.danger} icon="receipt" T={T}/>
+        <StatCard label="This Month" value={`$${thisMonth.toFixed(2)}`} accent={T.warning} icon="barchart" T={T}/>
+        <StatCard label="Entries" value={expenses.length} accent={T.cyan} icon="info" T={T}/>
+      </div>
+      <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:18,padding:22,
+        marginBottom:16,boxShadow:`0 1px 4px ${T.shadow}`}}>
+        <SectionLabel text="Category Breakdown" T={T}/>
+        {bd.map(c=>(
+          <div key={c.cat} style={{marginBottom:14}}>
+            <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
+              <span style={{fontSize:14,color:T.text,fontWeight:500}}>{c.cat}</span>
+              <span style={{fontSize:14,fontWeight:700,color:T.text}}>${c.total.toFixed(2)}</span>
+            </div>
+            <ProgressBar pct={(c.total/total)*100} color={BRAND.yellow} T={T}/>
+          </div>
+        ))}
+      </div>
+      <div style={{display:'flex',flexDirection:'column',gap:8}}>
+        {expenses.map(exp=>(
+          <div key={exp.id} style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,
+            padding:'14px 18px',display:'flex',alignItems:'center',gap:14,boxShadow:`0 1px 3px ${T.shadow}`}}>
+            <div style={{width:40,height:40,borderRadius:11,background:T.warning+'18',display:'flex',
+              alignItems:'center',justifyContent:'center',flexShrink:0}}>
+              <Icon name="receipt" size={18} color={T.warning}/>
+            </div>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:14,fontWeight:600,color:T.text}}>{exp.title}</div>
+              <div style={{fontSize:12,color:T.muted,marginTop:1}}>{exp.category} · {exp.date}</div>
+            </div>
+            <div style={{textAlign:'right',flexShrink:0}}>
+              <div style={{fontSize:15,fontWeight:800,color:T.text}}>${exp.amount.toFixed(2)}</div>
+              {exp.recurring&&<Badge text="Recurring" color={T.cyan} T={T}/>}
+            </div>
+          </div>
+        ))}
+      </div>
+      <Modal show={showAdd} onClose={()=>setShowAdd(false)} title="Add Expense" width={420} T={T}>
+        <Field label="Description" value={ne.title} onChange={v=>setNe({...ne,title:v})} T={T}/>
+        <Field label="Amount" value={ne.amount} onChange={v=>setNe({...ne,amount:v})} type="number" prefix="$" T={T}/>
+        <div style={{marginBottom:14}}>
+          <div style={{fontSize:12,fontWeight:600,color:T.muted,marginBottom:6}}>Category</div>
+          <select value={ne.category} onChange={e=>setNe({...ne,category:e.target.value})}
+            style={{background:T.inputBg,border:`1.5px solid ${T.border}`,borderRadius:10,color:T.text,
+              padding:'10px 14px',fontSize:14,width:'100%',fontFamily:"'Inter',sans-serif",outline:'none'}}>
+            {cats.map(c=><option key={c}>{c}</option>)}
+          </select>
+        </div>
+        <Field label="Date" value={ne.date} onChange={v=>setNe({...ne,date:v})} type="date" T={T}/>
+        <div style={{display:'flex',gap:10,marginTop:8}}>
+          <Btn variant="ghost" onClick={()=>setShowAdd(false)} T={T}>Cancel</Btn>
+          <Btn onClick={addExp} T={T}>Save Expense</Btn>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
+/* ── MILEAGE ────────────────────────────────────────────────── */
+function MileagePage({mileage,setMileage,T}){
+  const [showAdd,setShowAdd]=useState(false);
+  const today=new Date().toISOString().split('T')[0];
+  const blank={from:'',to:'',miles:'',date:today,purpose:'Sourcing'};
+  const [nt,setNt]=useState(blank);
+  const purposes=['Sourcing','Shipping Run','Pickup','Business Travel'];
+  const totalMiles=mileage.reduce((s,m)=>s+m.miles,0);
+  const totalDed=mileage.reduce((s,m)=>s+m.deduction,0);
+  function addTrip(){const miles=parseFloat(nt.miles)||0;setMileage([...mileage,{...nt,id:mileage.length+1,miles,deduction:parseFloat((miles*MILEAGE_RATE).toFixed(2))}]);setNt(blank);setShowAdd(false);}
+
+  return(
+    <div style={{padding:'24px 28px',overflowY:'auto',flex:1}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
+        <div style={{fontSize:26,fontWeight:800,color:T.text,letterSpacing:-0.5}}>Mileage</div>
+        <Btn onClick={()=>setShowAdd(true)} icon="plus" T={T}>Add Trip</Btn>
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(120px,1fr))',gap:10,marginBottom:18}}>
+        <StatCard label="Total Miles" value={totalMiles} accent={T.cyan} icon="route" T={T}/>
+        <StatCard label="Tax Deduction" value={`$${totalDed.toFixed(2)}`} accent={T.success} icon="dollar" sub={`@ $${MILEAGE_RATE}/mi`} T={T}/>
+        <StatCard label="Trips Logged" value={mileage.length} accent={BRAND.yellow} icon="car" T={T}/>
+      </div>
+      <div style={{background:BRAND.yellow+'18',border:`1px solid ${BRAND.yellow}40`,borderRadius:14,padding:'14px 18px',
+        marginBottom:16,display:'flex',alignItems:'center',gap:12}}>
+        <Icon name="bulb" size={18} color={BRAND.yellow}/>
+        <div style={{fontSize:13,color:T.text,fontWeight:500}}>
+          IRS Mileage Rate 2026: <b style={{color:BRAND.yellow}}>${MILEAGE_RATE}/mile</b> — all business trips are deductible
+        </div>
+      </div>
+      <div style={{display:'flex',flexDirection:'column',gap:8}}>
+        {mileage.map(trip=>(
+          <div key={trip.id} style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,
+            padding:'14px 18px',display:'flex',alignItems:'center',gap:14,boxShadow:`0 1px 3px ${T.shadow}`}}>
+            <div style={{width:40,height:40,borderRadius:11,background:T.cyan+'18',display:'flex',
+              alignItems:'center',justifyContent:'center',flexShrink:0}}>
+              <Icon name="car" size={18} color={T.cyan}/>
+            </div>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:14,fontWeight:600,color:T.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{trip.from} → {trip.to}</div>
+              <div style={{fontSize:12,color:T.muted,marginTop:1}}>{trip.purpose} · {trip.date}</div>
+            </div>
+            <div style={{textAlign:'right',flexShrink:0}}>
+              <div style={{fontSize:15,fontWeight:800,color:T.text}}>{trip.miles} mi</div>
+              <div style={{fontSize:12,color:T.success,fontWeight:600,marginTop:2}}>${trip.deduction.toFixed(2)} deduction</div>
+            </div>
+          </div>
+        ))}
+      </div>
+      <Modal show={showAdd} onClose={()=>setShowAdd(false)} title="Log Trip" width={420} T={T}>
+        <Field label="From" value={nt.from} onChange={v=>setNt({...nt,from:v})} T={T}/>
+        <Field label="To" value={nt.to} onChange={v=>setNt({...nt,to:v})} T={T}/>
+        <Field label="Miles" value={nt.miles} onChange={v=>setNt({...nt,miles:v})} type="number" T={T}/>
+        {nt.miles&&<div style={{fontSize:13,color:T.success,marginBottom:12,fontWeight:600}}>
+          Deduction: ${(parseFloat(nt.miles||0)*MILEAGE_RATE).toFixed(2)}
+        </div>}
+        <div style={{marginBottom:14}}>
+          <div style={{fontSize:12,fontWeight:600,color:T.muted,marginBottom:6}}>Purpose</div>
+          <select value={nt.purpose} onChange={e=>setNt({...nt,purpose:e.target.value})}
+            style={{background:T.inputBg,border:`1.5px solid ${T.border}`,borderRadius:10,color:T.text,
+              padding:'10px 14px',fontSize:14,width:'100%',fontFamily:"'Inter',sans-serif",outline:'none'}}>
+            {purposes.map(p=><option key={p}>{p}</option>)}
+          </select>
+        </div>
+        <Field label="Date" value={nt.date} onChange={v=>setNt({...nt,date:v})} type="date" T={T}/>
+        <div style={{display:'flex',gap:10,marginTop:8}}>
+          <Btn variant="ghost" onClick={()=>setShowAdd(false)} T={T}>Cancel</Btn>
+          <Btn onClick={addTrip} T={T}>Save Trip</Btn>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
+/* ── REPORTS ────────────────────────────────────────────────── */
+function ReportsPage({inventory,expenses,T}){
+  const [period,setPeriod]=useState('Monthly');
+  const sold=inventory.filter(i=>i.status==='Sold');
+  const gross=sold.reduce((s,i)=>s+i.price,0);
+  const cogs=sold.reduce((s,i)=>s+i.cost,0);
+  const fees=sold.reduce((s,i)=>s+i.price*0.1315,0);
+  const expT=expenses.reduce((s,e)=>s+e.amount,0);
+  const net=gross-cogs-fees;
+  const catPerf=[...new Set(sold.map(i=>i.category))].map(cat=>({cat,count:sold.filter(i=>i.category===cat).length,rev:sold.filter(i=>i.category===cat).reduce((s,i)=>s+i.price,0)})).sort((a,b)=>b.rev-a.rev);
+  const platPerf=[...new Set(sold.map(i=>i.platform))].map(p=>({p,count:sold.filter(i=>i.platform===p).length,rev:sold.filter(i=>i.platform===p).reduce((s,i)=>s+i.price,0)})).sort((a,b)=>b.rev-a.rev);
+  const pCols=[T.cyan,BRAND.magenta,BRAND.yellow,T.success,T.warning];
+
+  return(
+    <div style={{padding:'24px 28px',overflowY:'auto',flex:1}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20,flexWrap:'wrap',gap:10}}>
+        <div style={{fontSize:26,fontWeight:800,color:T.text,letterSpacing:-0.5}}>Reports</div>
+        <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+          {['Daily','Weekly','Monthly','YTD'].map(p=>(
+            <button key={p} onClick={()=>setPeriod(p)} style={{background:period===p?BRAND.yellow:T.surface,
+              color:period===p?'#111':T.muted,border:`1px solid ${period===p?BRAND.yellow:T.border}`,
+              borderRadius:20,padding:'7px 14px',fontSize:13,fontWeight:600,cursor:'pointer',
+              fontFamily:"'Inter',sans-serif",transition:'all 0.15s'}}>{p}</button>
+          ))}
+        </div>
+      </div>
+
+      {/* P&L */}
+      <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:20,padding:24,
+        marginBottom:16,boxShadow:`0 2px 8px ${T.shadow}`}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:18,flexWrap:'wrap',gap:10}}>
+          <div style={{fontSize:16,fontWeight:700,color:T.text}}>P&L Summary — {period}</div>
+          <Btn small variant="secondary" icon="download" T={T}>Export PDF</Btn>
+        </div>
+        {[['Number of Sales',sold.length,T.text],['Gross Sales',`$${gross.toFixed(2)}`,T.text],
+          ['Cost of Goods Sold',`$${cogs.toFixed(2)}`,T.text],['Platform Fees',`$${fees.toFixed(2)}`,T.text],
+          ['Business Expenses',`$${expT.toFixed(2)}`,T.text],['Sales Tax','$0.00',T.muted]].map(([l,v,col])=>(
+          <div key={l} style={{display:'flex',justifyContent:'space-between',padding:'11px 0',borderBottom:`1px solid ${T.border}`}}>
+            <span style={{fontSize:14,color:T.muted}}>{l}</span>
+            <span style={{fontSize:14,fontWeight:600,color:col}}>{v}</span>
+          </div>
+        ))}
+        <div style={{display:'flex',justifyContent:'space-between',padding:'16px 0 4px',marginTop:4}}>
+          <span style={{fontSize:16,fontWeight:700,color:T.text}}>Net Adjusted Profit</span>
+          <span style={{fontSize:24,fontWeight:900,color:net>=0?T.success:T.danger}}>${net.toFixed(2)}</span>
+        </div>
+      </div>
+
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(230px,1fr))',gap:14,marginBottom:16}}>
+        <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:18,padding:20,boxShadow:`0 1px 4px ${T.shadow}`}}>
+          <SectionLabel text="Category Performance" T={T}/>
+          {catPerf.map(c=>(
+            <div key={c.cat} style={{marginBottom:14}}>
+              <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
+                <span style={{fontSize:14,color:T.text,display:'flex',alignItems:'center',gap:8}}>
+                  {c.cat}
+                  <Badge text={c.count} color={BRAND.yellow} T={T}/>
+                </span>
+                <span style={{fontSize:14,fontWeight:700,color:T.text}}>${c.rev.toFixed(2)}</span>
+              </div>
+              <ProgressBar pct={gross>0?(c.rev/gross)*100:0} color={BRAND.yellow} T={T}/>
+            </div>
+          ))}
+        </div>
+        <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:18,padding:20,boxShadow:`0 1px 4px ${T.shadow}`}}>
+          <SectionLabel text="Platform Performance" T={T}/>
+          {platPerf.map((pl,i)=>(
+            <div key={pl.p} style={{marginBottom:14}}>
+              <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
+                <span style={{fontSize:14,color:T.text,display:'flex',alignItems:'center',gap:8}}>
+                  {pl.p}
+                  <Badge text={pl.count} color={pCols[i%5]} T={T}/>
+                </span>
+                <span style={{fontSize:14,fontWeight:700,color:T.text}}>${pl.rev.toFixed(2)}</span>
+              </div>
+              <ProgressBar pct={gross>0?(pl.rev/gross)*100:0} color={pCols[i%5]} T={T}/>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:18,padding:20,boxShadow:`0 1px 4px ${T.shadow}`}}>
+        <SectionLabel text="Capital Tied Up" T={T}/>
+        <div style={{display:'flex',gap:28,flexWrap:'wrap'}}>
+          <div>
+            <div style={{fontSize:12,color:T.muted,fontWeight:500,marginBottom:4}}>Cost of Goods Unsold</div>
+            <div style={{fontSize:24,fontWeight:800,color:T.warning}}>${inventory.filter(i=>i.status!=='Sold').reduce((s,i)=>s+i.cost,0).toFixed(2)}</div>
+          </div>
+          <div>
+            <div style={{fontSize:12,color:T.muted,fontWeight:500,marginBottom:4}}>Potential Profit</div>
+            <div style={{fontSize:24,fontWeight:800,color:T.success}}>${inventory.filter(i=>i.status!=='Sold').reduce((s,i)=>s+(i.price-i.cost),0).toFixed(2)}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── GOALS ──────────────────────────────────────────────────── */
+function GoalsPage({goals,setGoals,T}){
+  const [tab,setTab]=useState('Active');
+  const tc={SALES:T.success,REVENUE:BRAND.yellow,LISTING:T.cyan,INVENTORY:BRAND.magenta};
+  const avail=[
+    {id:10,title:'Quick Wins',type:'SALES',description:'Get 5 sales in next 7 days',target:5,unit:'sales',duration:'1 week'},
+    {id:11,title:'Momentum Builder',type:'SALES',description:'Sell 20 items this month',target:20,unit:'items',duration:'1 month'},
+    {id:12,title:'Revenue Target',type:'REVENUE',description:'Earn $1,000 this month',target:1000,unit:'$',duration:'1 month'},
+    {id:13,title:'List Like a Pro',type:'LISTING',description:'Create 100 listings',target:100,unit:'listings',duration:'2 weeks'},
+  ];
+
+  return(
+    <div style={{padding:'24px 28px',overflowY:'auto',flex:1}}>
+      <div style={{fontSize:26,fontWeight:800,color:T.text,letterSpacing:-0.5,marginBottom:20}}>Goals</div>
+
+      <div style={{display:'flex',gap:4,marginBottom:22,background:T.surface,borderRadius:14,padding:5,
+        width:'fit-content',border:`1px solid ${T.border}`}}>
+        {['Available','Active','Completed'].map(t=>(
+          <button key={t} onClick={()=>setTab(t)} style={{background:tab===t?BRAND.yellow:'transparent',
+            color:tab===t?'#111':T.muted,border:'none',borderRadius:10,padding:'8px 18px',
+            fontSize:14,fontWeight:600,cursor:'pointer',fontFamily:"'Inter',sans-serif",transition:'all 0.15s'}}>{t}</button>
+        ))}
+      </div>
+
+      {tab==='Active'&&(
+        <div style={{display:'flex',flexDirection:'column',gap:12}}>
+          {goals.filter(g=>g.status==='active').map(goal=>(
+            <div key={goal.id} style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:18,padding:22,
+              boxShadow:`0 1px 6px ${T.shadow}`}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:10}}>
+                <Badge text={goal.type} color={tc[goal.type]||BRAND.yellow} T={T}/>
+                <span style={{fontSize:13,color:T.warning,fontWeight:600}}>{goal.daysLeft} days left</span>
+              </div>
+              <div style={{fontSize:17,fontWeight:700,color:T.text,marginBottom:4}}>{goal.title}</div>
+              <div style={{fontSize:13,color:T.muted,marginBottom:16}}>{goal.description}</div>
+              <ProgressBar pct={(goal.current/goal.target)*100} color={tc[goal.type]||BRAND.yellow} T={T}/>
+              <div style={{display:'flex',justifyContent:'space-between',marginTop:8,fontSize:13}}>
+                <span style={{color:T.muted}}>{goal.current} of {goal.target} {goal.unit}</span>
+                <span style={{color:tc[goal.type],fontWeight:700}}>{Math.round((goal.current/goal.target)*100)}%</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {tab==='Available'&&(
+        <div style={{display:'flex',flexDirection:'column',gap:12}}>
+          {avail.filter(a=>!goals.find(g=>g.id===a.id)).map(g=>(
+            <div key={g.id} style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:18,padding:22,
+              boxShadow:`0 1px 6px ${T.shadow}`}}>
+              <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10}}>
+                <div style={{width:36,height:36,borderRadius:10,background:(tc[g.type]||BRAND.yellow)+'18',
+                  display:'flex',alignItems:'center',justifyContent:'center'}}>
+                  <Icon name="trendUp" size={18} color={tc[g.type]||BRAND.yellow}/>
+                </div>
+                <Badge text={g.type} color={tc[g.type]||BRAND.yellow} T={T}/>
+              </div>
+              <div style={{fontSize:17,fontWeight:700,color:T.text,marginBottom:4}}>{g.title}</div>
+              <div style={{fontSize:13,color:T.muted,marginBottom:16}}>{g.description}</div>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:16}}>
+                <div style={{background:T.surface,borderRadius:10,padding:12}}>
+                  <div style={{fontSize:11,color:T.muted,fontWeight:600,marginBottom:4}}>TARGET</div>
+                  <div style={{fontSize:19,fontWeight:800,color:T.text}}>{g.target}</div>
+                </div>
+                <div style={{background:T.surface,borderRadius:10,padding:12}}>
+                  <div style={{fontSize:11,color:T.muted,fontWeight:600,marginBottom:4}}>DURATION</div>
+                  <div style={{fontSize:16,fontWeight:700,color:T.text}}>{g.duration}</div>
+                </div>
+              </div>
+              <div style={{display:'flex',gap:10}}>
+                <Btn variant="ghost" small T={T}>Not Now</Btn>
+                <Btn small icon="plus" T={T} onClick={()=>{setGoals([...goals,{...g,current:0,daysLeft:7,status:'active'}]);setTab('Active');}}>
+                  Accept Challenge
+                </Btn>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {tab==='Completed'&&(
+        <div style={{textAlign:'center',padding:64,color:T.muted}}>
+          <Icon name="trophy" size={52} color={T.subtleMuted}/>
+          <div style={{marginTop:16,fontSize:16,fontWeight:700}}>No completed goals yet</div>
+          <div style={{fontSize:13,marginTop:4}}>Accept a challenge to get started!</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── STORAGE ────────────────────────────────────────────────── */
+function StoragePage({inventory,T}){
+  const locs=[...new Set(inventory.map(i=>i.location).filter(Boolean))];
+  const ld=locs.map(loc=>({name:loc,items:inventory.filter(i=>i.location===loc),value:inventory.filter(i=>i.location===loc).reduce((s,i)=>s+i.cost,0),potential:inventory.filter(i=>i.location===loc).reduce((s,i)=>s+(i.price-i.cost),0)}));
+
+  return(
+    <div style={{padding:'24px 28px',overflowY:'auto',flex:1}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
+        <div style={{fontSize:26,fontWeight:800,color:T.text,letterSpacing:-0.5}}>Storage</div>
+        <Btn icon="plus" T={T}>Add Location</Btn>
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(120px,1fr))',gap:10,marginBottom:18}}>
+        <StatCard label="Locations" value={ld.length} accent={T.cyan} icon="mappin" sub="with inventory" T={T}/>
+        <StatCard label="Total Items" value={inventory.length} accent={BRAND.yellow} icon="box" sub="active only" T={T}/>
+        <StatCard label="Total Value" value={`$${inventory.reduce((s,i)=>s+i.cost,0).toFixed(0)}`} accent={T.success} icon="dollar" sub="cost of goods" T={T}/>
+        <StatCard label="Potential" value={`$${inventory.reduce((s,i)=>s+(i.price-i.cost),0).toFixed(0)}`} accent={T.warning} icon="trendUp" sub="if all sold" T={T}/>
+      </div>
+      <div style={{display:'flex',flexDirection:'column',gap:10}}>
+        {ld.map(loc=>(
+          <div key={loc.name} style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:16,
+            padding:'18px 20px',boxShadow:`0 1px 4px ${T.shadow}`}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
+              <div style={{display:'flex',alignItems:'center',gap:10}}>
+                <div style={{width:36,height:36,borderRadius:10,background:T.cyan+'18',display:'flex',alignItems:'center',justifyContent:'center'}}>
+                  <Icon name="mappin" size={18} color={T.cyan}/>
+                </div>
+                <div style={{fontSize:15,fontWeight:700,color:T.text}}>{loc.name}</div>
+              </div>
+              <Btn small variant="ghost" icon="qrcode" T={T}>Print QR</Btn>
+            </div>
+            <div style={{display:'flex',gap:24,flexWrap:'wrap',marginBottom:12}}>
+              {[['Active Items',loc.items.length,T.cyan],['Cost of Goods',`$${loc.value.toFixed(0)}`,T.success],['Potential Profit',`$${loc.potential.toFixed(0)}`,T.warning]].map(([l,v,col])=>(
+                <div key={l}>
+                  <div style={{fontSize:11,color:T.muted,fontWeight:600,marginBottom:3}}>{l}</div>
+                  <div style={{fontSize:19,fontWeight:800,color:col}}>{v}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+              {loc.items.slice(0,6).map(item=>(
+                <span key={item.id} style={{fontSize:12,background:T.surface,color:T.muted,borderRadius:8,
+                  padding:'4px 9px',fontWeight:500,border:`1px solid ${T.border}`}}>{item.sku}</span>
+              ))}
+              {loc.items.length>6&&<span style={{fontSize:12,color:T.muted}}>+{loc.items.length-6} more</span>}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ── ROOT APP ───────────────────────────────────────────────── */
+/* ── LABELS PAGE ─────────────────────────────────────────── */
+function LabelsPage({inventory,T}){
+  const [search,setSearch]=useState('');
+  const [selected,setSelected]=useState(new Set());
+  const [tmpl,setTmpl]=useState('Avery 5160');
+  const [byQty,setByQty]=useState(false);
+  const [showPrint,setShowPrint]=useState(false);
+  const tmpls=['Avery 5160','Avery 8160','Dymo 30252','Zebra 2x1'];
+  const tmplDesc={'Avery 5160':'30 per page · 1" × 2.625"','Avery 8160':'30 per page · inkjet optimized','Dymo 30252':'1 per sheet · 1.125" × 3.5"','Zebra 2x1':'1" × 2" direct thermal'};
+  const filtered=inventory.filter(i=>!search||(i.title+i.sku).toLowerCase().includes(search.toLowerCase()));
+  function toggle(id){const s=new Set(selected);s.has(id)?s.delete(id):s.add(id);setSelected(s);}
+  function toggleAll(){selected.size===filtered.length?setSelected(new Set()):setSelected(new Set(filtered.map(i=>i.id)));}
+  const labelCount=byQty?[...selected].reduce((s,id)=>{const it=inventory.find(i=>i.id===id);return s+(it?it.qty:1);},0):selected.size;
+  const statusColor={Listed:T.cyan,Sold:T.success,Unlisted:T.warning,Returned:T.danger};
+  return(
+    <div style={{padding:'24px 28px',overflowY:'auto',flex:1}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
+        <div style={{fontSize:26,fontWeight:800,color:T.text,letterSpacing:-0.5}}>Labels</div>
+        {selected.size>0&&<Btn ic="print" T={T} onClick={()=>setShowPrint(true)}>Print {labelCount} Label{labelCount!==1?'s':''}</Btn>}
+      </div>
+      {/* Template */}
+      <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:18,padding:'18px 22px',marginBottom:14,boxShadow:`0 1px 4px ${T.shadow}`}}>
+        <div style={{fontSize:11,fontWeight:700,color:T.muted,letterSpacing:.8,textTransform:'uppercase',marginBottom:12}}>Label Template</div>
+        <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:14}}>
+          {tmpls.map(t=>(
+            <button key={t} onClick={()=>setTmpl(t)} style={{background:tmpl===t?BRAND.yellow:T.surface,color:tmpl===t?'#111':T.muted,border:`1px solid ${tmpl===t?BRAND.yellow:T.border}`,borderRadius:10,padding:'8px 16px',fontSize:13,fontWeight:600,cursor:'pointer',fontFamily:"'Inter',sans-serif",transition:'all .14s'}}>{t}</button>
+          ))}
+        </div>
+        <div style={{fontSize:12,color:T.muted,marginBottom:14}}>{tmplDesc[tmpl]}</div>
+        <div style={{display:'flex',alignItems:'center',gap:10}}>
+          <input type="checkbox" id="byqtylbl" checked={byQty} onChange={e=>setByQty(e.target.checked)} style={{width:16,height:16,accentColor:BRAND.yellow,cursor:'pointer'}}/>
+          <label htmlFor="byqtylbl" style={{fontSize:14,color:T.text,cursor:'pointer'}}>Print by Quantity — one label per unit (e.g. qty 10 = 10 labels)</label>
+        </div>
+      </div>
+      {/* Search + select all */}
+      <div style={{display:'flex',gap:10,marginBottom:12,alignItems:'center'}}>
+        <div style={{flex:1,display:'flex',alignItems:'center',background:T.inputBg,border:`1.5px solid ${T.border}`,borderRadius:12,padding:'0 14px',gap:8}}>
+          <Icon name="search" size={15} color={T.muted}/>
+          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search by title or SKU…" style={{background:'transparent',border:'none',outline:'none',color:T.text,padding:'10px 0',fontSize:14,width:'100%'}}/>
+        </div>
+        <button onClick={toggleAll} style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:10,padding:'9px 14px',fontSize:13,fontWeight:600,color:T.muted,cursor:'pointer',fontFamily:"'Inter',sans-serif",display:'flex',alignItems:'center',gap:6}}>
+          <Icon name={selected.size===filtered.length?'check':'layers'} size={14} color={T.muted}/>
+          {selected.size===filtered.length?'Deselect All':'Select All'}
+        </button>
+      </div>
+      {selected.size>0&&(
+        <div style={{background:BRAND.yellow+'18',border:`1px solid ${BRAND.yellow}38`,borderRadius:12,padding:'12px 16px',marginBottom:12,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+          <span style={{fontSize:13,fontWeight:600,color:T.text}}>{selected.size} item{selected.size!==1?'s':''} selected · {labelCount} label{labelCount!==1?'s':''} to print</span>
+          <Btn sm ic="print" T={T} onClick={()=>setShowPrint(true)}>Print Labels</Btn>
+        </div>
+      )}
+      <div style={{display:'flex',flexDirection:'column',gap:7}}>
+        {filtered.map(item=>{
+          const isSel=selected.has(item.id);
+          const sc=statusColor[item.status]||T.muted;
+          return(
+            <div key={item.id} onClick={()=>toggle(item.id)}
+              style={{background:T.card,border:`1.5px solid ${isSel?BRAND.yellow:T.border}`,borderRadius:13,padding:'12px 16px',display:'flex',alignItems:'center',gap:14,cursor:'pointer',transition:'border-color .14s',boxShadow:`0 1px 3px ${T.shadow}`}}>
+              <div style={{width:22,height:22,borderRadius:6,border:`2px solid ${isSel?BRAND.yellow:T.faint||T.border}`,background:isSel?BRAND.yellow:'transparent',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                {isSel&&<Icon name="check" size={13} color="#111" strokeWidth={2.5}/>}
+              </div>
+              <div style={{width:40,height:40,borderRadius:10,background:T.surface,display:'flex',alignItems:'center',justifyContent:'center',fontSize:20,flexShrink:0}}>
+                {item.category==='Video Games'?'🎮':item.category==='Electronics'?'📱':item.category==='Clothing'?'👕':'📦'}
+              </div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:14,fontWeight:600,color:T.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{item.title}</div>
+                <div style={{display:'flex',gap:6,alignItems:'center',marginTop:4,flexWrap:'wrap'}}>
+                  <Badge text={item.sku} color={BRAND.magenta} T={T}/>
+                  <span style={{fontSize:12,color:T.muted}}>{item.category}</span>
+                  {item.location&&<span style={{fontSize:11,color:T.muted,display:'flex',alignItems:'center',gap:3}}><Icon name="mappin" size={11} color={T.muted}/>  {item.location}</span>}
+                </div>
+              </div>
+              <div style={{textAlign:'right',flexShrink:0}}>
+                <div style={{fontSize:14,fontWeight:700,color:T.text}}>${item.price}</div>
+                <div style={{fontSize:11,color:T.muted,marginBottom:4}}>qty: {item.qty||1}</div>
+                <Badge text={item.status} color={sc} T={T}/>
+              </div>
+              <Icon name="qr" size={22} color={isSel?BRAND.yellow:T.muted||T.border}/>
+            </div>
+          );
+        })}
+        {filtered.length===0&&(
+          <div style={{textAlign:'center',padding:'56px 24px',color:T.muted}}>
+            <Icon name="label" size={48} color={T.muted} style={{opacity:.3}}/>
+            <div style={{fontSize:16,fontWeight:700,color:T.text,marginTop:14}}>No items found</div>
+          </div>
+        )}
+      </div>
+      {showPrint&&(
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.6)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:300,backdropFilter:'blur(4px)'}} onClick={()=>setShowPrint(false)}>
+          <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:22,padding:28,width:440,boxShadow:'0 24px 64px rgba(0,0,0,.35)'}} onClick={e=>e.stopPropagation()}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:22}}>
+              <div style={{fontSize:17,fontWeight:700,color:T.text}}>Print Labels</div>
+              <button onClick={()=>setShowPrint(false)} style={{background:T.surface,border:'none',borderRadius:9,padding:7,cursor:'pointer'}}><Icon name="x" size={15} color={T.muted}/></button>
+            </div>
+            <div style={{background:T.surface,border:`1.5px solid ${BRAND.yellow}38`,borderRadius:14,padding:'16px 18px',marginBottom:16,display:'flex',alignItems:'center',gap:14}}>
+              <div style={{width:52,height:52,borderRadius:12,background:T.card,display:'flex',alignItems:'center',justifyContent:'center'}}><Icon name="qr" size={28} color={BRAND.yellow}/></div>
+              <div><div style={{fontSize:15,fontWeight:700,color:T.text}}>{tmpl}</div><div style={{fontSize:13,color:T.muted,marginTop:2}}>{tmplDesc[tmpl]}</div></div>
+            </div>
+            <div style={{background:T.surface,borderRadius:12,padding:'14px 16px',marginBottom:16}}>
+              {[['Items selected',selected.size],['Labels to print',labelCount],['Print by quantity',byQty?'Yes':'No']].map(([l,v])=>(
+                <div key={l} style={{display:'flex',justifyContent:'space-between',padding:'6px 0',borderBottom:`1px solid ${T.border}`}}>
+                  <span style={{fontSize:14,color:T.muted}}>{l}</span>
+                  <span style={{fontSize:14,fontWeight:700,color:T.text}}>{v}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{display:'flex',gap:10}}>
+              <Btn v="ghost" onClick={()=>setShowPrint(false)} T={T}>Cancel</Btn>
+              <Btn ic="print" T={T} full onClick={()=>{alert(`Sending ${labelCount} label${labelCount!==1?'s':''} to printer...\n\nTemplate: ${tmpl}\nItems: ${selected.size}`);setShowPrint(false);}}>
+                Print {labelCount} Label{labelCount!==1?'s':''}
+              </Btn>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+/* ── IMPORT / EXPORT PAGE ────────────────────────────────── */
+function ExportPage({inventory,expenses,mileage,T}){
+  const [tab,setTab]=useState('export');
+  const [year,setYear]=useState('2026');
+  const [exporting,setExporting]=useState(false);
+  const [done,setDone]=useState(false);
+  const [importText,setImportText]=useState('');
+  const [importMsg,setImportMsg]=useState('');
+
+  function downloadCSV(rows,filename){
+    const csv=rows.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
+    const blob=new Blob([csv],{type:'text/csv'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');a.href=url;a.download=filename;a.click();URL.revokeObjectURL(url);
+  }
+  function doExportInventory(){
+    setExporting(true);setDone(false);
+    setTimeout(()=>{
+      downloadCSV([['SKU','Title','Category','Brand','Condition','Qty','Cost','Price','Status','Platform','Location','Days Listed'],...inventory.map(i=>[i.sku,i.title,i.category,i.brand,i.condition,i.qty,i.cost,i.price,i.status,i.platform,i.location,i.daysListed])],`rrh-inventory-${year}.csv`);
+      setExporting(false);setDone(true);setTimeout(()=>setDone(false),4000);
+    },1000);
+  }
+  function doExportExpenses(){downloadCSV([['Date','Description','Category','Amount','Recurring'],...expenses.map(e=>[e.date,e.title,e.category,e.amount,e.recurring?'Yes':'No'])],`rrh-expenses-${year}.csv`);}
+  function doExportMileage(){downloadCSV([['Date','From','To','Miles','Purpose','Deduction'],...mileage.map(m=>[m.date,m.from,m.to,m.miles,m.purpose,m.deduction])],`rrh-mileage-${year}.csv`);}
+
+  return(
+    <div style={{padding:'24px 28px',overflowY:'auto',flex:1}}>
+      <div style={{fontSize:26,fontWeight:800,color:T.text,letterSpacing:-0.5,marginBottom:20}}>Import / Export</div>
+      <div style={{display:'flex',gap:4,marginBottom:22,background:T.surface,borderRadius:14,padding:5,width:'fit-content',border:`1px solid ${T.border}`}}>
+        {[['export','Export Data','download'],['import','Import Data','import']].map(([id,lbl,ic])=>(
+          <button key={id} onClick={()=>setTab(id)} style={{background:tab===id?BRAND.yellow:'transparent',color:tab===id?'#111':T.muted,border:'none',borderRadius:10,padding:'9px 20px',fontSize:14,fontWeight:600,cursor:'pointer',fontFamily:"'Inter',sans-serif",transition:'all .14s',display:'flex',alignItems:'center',gap:7}}>
+            <Icon name={ic} size={15} color={tab===id?'#111':T.muted}/>{lbl}
+          </button>
+        ))}
+      </div>
+
+      {tab==='export'&&(
+        <div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10,marginBottom:16}}>
+            {[[inventory.length,'Inventory Items','box',T.cyan],[expenses.length,'Expense Records','receipt',T.warning],[mileage.length,'Mileage Trips','car',T.success]].map(([v,l,i,c])=>(
+              <div key={l} style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:'16px 18px',boxShadow:`0 1px 4px ${T.shadow}`,display:'flex',alignItems:'center',gap:12}}>
+                <div style={{width:40,height:40,borderRadius:10,background:c+'1A',display:'flex',alignItems:'center',justifyContent:'center'}}><Icon name={i} size={20} color={c}/></div>
+                <div><div style={{fontSize:22,fontWeight:800,color:T.text}}>{v}</div><div style={{fontSize:12,color:T.muted}}>{l}</div></div>
+              </div>
+            ))}
+          </div>
+          <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:18,padding:'18px 22px',marginBottom:16,boxShadow:`0 1px 4px ${T.shadow}`}}>
+            <div style={{fontSize:11,fontWeight:700,color:T.muted,letterSpacing:.8,textTransform:'uppercase',marginBottom:12}}>Select Year</div>
+            <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:8}}>
+              {['2024','2025','2026','All Time'].map(y=>(
+                <button key={y} onClick={()=>setYear(y)} style={{background:year===y?BRAND.yellow:T.surface,color:year===y?'#111':T.muted,border:`1px solid ${year===y?BRAND.yellow:T.border}`,borderRadius:20,padding:'7px 16px',fontSize:13,fontWeight:600,cursor:'pointer',fontFamily:"'Inter',sans-serif",transition:'all .14s'}}>{y}</button>
+              ))}
+            </div>
+            <div style={{fontSize:12,color:T.muted}}>{inventory.length} items · {expenses.length} expenses · {mileage.length} mileage entries</div>
+          </div>
+          <div style={{display:'flex',flexDirection:'column',gap:10,marginBottom:14}}>
+            {[
+              ['Inventory CSV','Full inventory with SKUs, costs, prices, status','box',T.cyan,doExportInventory],
+              ['Expenses CSV','All expense records with categories & dates','receipt',T.warning,doExportExpenses],
+              ['Mileage Log CSV','All trips with IRS deduction amounts','car',T.success,doExportMileage],
+              ['P&L Statement PDF','Accountant-ready profit & loss report','file',BRAND.magenta,()=>alert('PDF export — connect your accountant tool to enable this feature.')],
+            ].map(([lbl,sub,ic,col,fn])=>(
+              <div key={lbl} style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:'14px 18px',display:'flex',alignItems:'center',gap:14,boxShadow:`0 1px 3px ${T.shadow}`}}>
+                <div style={{width:42,height:42,borderRadius:11,background:col+'1A',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}><Icon name={ic} size={20} color={col}/></div>
+                <div style={{flex:1}}><div style={{fontSize:14,fontWeight:700,color:T.text}}>{lbl}</div><div style={{fontSize:12,color:T.muted,marginTop:2}}>{sub}</div></div>
+                <Btn sm ic="download" v="ghost" T={T} onClick={fn}>Download</Btn>
+              </div>
+            ))}
+          </div>
+          {exporting&&<div style={{background:T.surface,borderRadius:14,padding:'16px 20px',display:'flex',alignItems:'center',gap:12,marginBottom:10}}>
+            <Icon name="spinner" size={20} color={T.cyan} style={{animation:'spin 1s linear infinite'}}/>
+            <div><div style={{fontSize:14,fontWeight:600,color:T.text}}>Exporting…</div><div style={{fontSize:12,color:T.muted}}>Preparing your file.</div></div>
+          </div>}
+          {done&&<div style={{background:T.success+'12',border:`1px solid ${T.success}28`,borderRadius:14,padding:'14px 18px',display:'flex',alignItems:'center',gap:10,marginBottom:10}}>
+            <Icon name="checkCircle" size={20} color={T.success}/>
+            <div style={{fontSize:14,fontWeight:600,color:T.success}}>Export complete — check your Downloads folder.</div>
+          </div>}
+          <div style={{background:T.cyan+'10',border:`1px solid ${T.cyan}28`,borderRadius:14,padding:'14px 18px',display:'flex',alignItems:'center',gap:12}}>
+            <Icon name="info" size={18} color={T.cyan}/>
+            <div style={{fontSize:13,color:T.text}}>Your data is securely stored in the cloud with daily automatic backups.</div>
+          </div>
+        </div>
+      )}
+
+      {tab==='import'&&(
+        <div>
+          <div style={{border:`2px dashed ${T.border}`,borderRadius:18,padding:'40px 24px',textAlign:'center',marginBottom:16,background:T.card,cursor:'pointer',transition:'border-color .14s'}}
+            onMouseEnter={e=>e.currentTarget.style.borderColor=BRAND.yellow}
+            onMouseLeave={e=>e.currentTarget.style.borderColor=T.border}>
+            <Icon name="upload" size={40} color={T.muted} style={{opacity:.35,marginBottom:14}}/>
+            <div style={{fontSize:16,fontWeight:700,color:T.text,marginBottom:6}}>Drag & Drop CSV or XLSX</div>
+            <div style={{fontSize:13,color:T.muted,marginBottom:16}}>or click to browse files</div>
+            <Btn v="ghost" ic="upload" T={T}>Choose File</Btn>
+          </div>
+          <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:18,padding:'18px 22px',marginBottom:14,boxShadow:`0 1px 4px ${T.shadow}`}}>
+            <div style={{fontSize:11,fontWeight:700,color:T.muted,letterSpacing:.8,textTransform:'uppercase',marginBottom:12}}>CSV Field Mapping</div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6}}>
+              {[['sku','SKU'],['title','Title'],['category','Category'],['brand','Brand'],['cost','Purchase Cost'],['price','List Price'],['status','Status'],['platform','Platform'],['location','Storage Location'],['condition','Condition']].map(([f,l])=>(
+                <div key={f} style={{display:'flex',gap:8,alignItems:'center',padding:'6px 0',borderBottom:`1px solid ${T.border}`}}>
+                  <span style={{fontSize:12,background:T.surface,color:BRAND.magenta,borderRadius:6,padding:'2px 8px',fontWeight:600,border:`1px solid ${BRAND.magenta}28`,minWidth:76,textAlign:'center'}}>{f}</span>
+                  <span style={{fontSize:13,color:T.muted}}>{l}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:18,padding:'18px 22px',boxShadow:`0 1px 4px ${T.shadow}`}}>
+            <div style={{fontSize:11,fontWeight:700,color:T.muted,letterSpacing:.8,textTransform:'uppercase',marginBottom:12}}>Or Paste CSV Data</div>
+            <textarea rows={6} value={importText} onChange={e=>setImportText(e.target.value)} placeholder={'sku,title,category,cost,price\nRC-001,"My Item","Clothing",5.00,25.00\n...'} style={{background:T.inputBg,border:`1.5px solid ${T.border}`,borderRadius:10,color:T.text,padding:'10px 14px',fontSize:13,width:'100%',resize:'vertical',outline:'none',fontFamily:"'Inter',sans-serif"}}/>
+            {importMsg&&<div style={{background:T.success+'12',border:`1px solid ${T.success}28`,borderRadius:10,padding:'10px 14px',margin:'12px 0',fontSize:13,color:T.success,fontWeight:600}}>{importMsg}</div>}
+            <Btn ic="upload" T={T} full onClick={()=>{if(importText.trim()){const lines=importText.trim().split('\n');setImportMsg('✓ Parsed '+( lines.length-1)+' row'+(lines.length!==2?'s':'')+' — review and confirm to import.');}else{setImportMsg('');}}} style={{marginTop:12}}>
+              Parse & Preview
+            </Btn>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+/* ── SETTINGS PAGE ─────────────────────────────────────────── */
+function SettingsPage({biz,setBiz,dark,setDark,T}){
+  const [tab,setTab]=useState('business');
+  const [saved,setSaved]=useState(false);
+  const [showInfo,setShowInfo]=useState(false);
+  const fileRef=React.useRef(null);
+
+  function update(k,v){setBiz(prev=>({...prev,[k]:v}));}
+  function save(){setSaved(true);setTimeout(()=>setSaved(false),2500);}
+  function handleLogoUpload(e){
+    const file=e.target.files[0];
+    if(!file)return;
+    const reader=new FileReader();
+    reader.onload=ev=>update('logo',ev.target.result);
+    reader.readAsDataURL(file);
+  }
+  function removeLogo(){update('logo',null);}
+
+  const TABS=[
+    {id:'business',label:'Business Profile',icon:'building'},
+    {id:'contact',label:'Contact & Address',icon:'mappin'},
+    {id:'billing',label:'Billing & Tax',icon:'dollar'},
+    {id:'preferences',label:'Preferences',icon:'settings'},
+    {id:'about',label:'About & Help',icon:'info'},
+  ];
+
+  return(
+    <div className="pe" style={{padding:'24px 28px',overflowY:'auto',flex:1}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:22}}>
+        <div>
+          <div style={{fontSize:26,fontWeight:800,color:T.text,letterSpacing:-0.5}}>Settings</div>
+          <div style={{fontSize:13,color:T.muted,marginTop:3}}>Customize your business profile and app preferences</div>
+        </div>
+        <div style={{display:'flex',gap:10,alignItems:'center'}}>
+          {saved&&<div style={{background:T.success+'18',border:`1px solid ${T.success}28`,borderRadius:10,padding:'8px 14px',fontSize:13,color:T.success,fontWeight:600,display:'flex',alignItems:'center',gap:6}}>
+            <Icon name="checkCircle" size={14} color={T.success}/> Saved!
+          </div>}
+          <Btn ic="check" T={T} onClick={save}>Save Changes</Btn>
+        </div>
+      </div>
+
+      <div style={{display:'flex',gap:20}}>
+        {/* Sidebar tabs */}
+        <div style={{width:210,flexShrink:0}}>
+          <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:16,overflow:'hidden',boxShadow:`0 1px 4px ${T.shadow}`}}>
+            {TABS.map((t,i)=>(
+              <button key={t.id} onClick={()=>setTab(t.id)} style={{width:'100%',background:tab===t.id?BRAND.yellow+'18':'transparent',border:'none',padding:'13px 16px',fontSize:14,fontWeight:tab===t.id?700:500,color:tab===t.id?BRAND.yellow:T.muted,cursor:'pointer',display:'flex',alignItems:'center',gap:10,fontFamily:"'Inter',sans-serif",textAlign:'left',borderBottom:i<TABS.length-1?`1px solid ${T.border}`:'none',boxShadow:tab===t.id?`inset 3px 0 0 ${BRAND.yellow}`:'none',transition:'all .14s'}}>
+                <Icon name={t.icon} size={16} color={tab===t.id?BRAND.yellow:T.muted}/>{t.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Content area */}
+        <div style={{flex:1,minWidth:0}}>
+
+          {/* ── BUSINESS PROFILE TAB ── */}
+          {tab==='business'&&(
+            <div style={{display:'flex',flexDirection:'column',gap:14}}>
+              {/* Logo upload */}
+              <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:18,padding:'22px 24px',boxShadow:`0 1px 4px ${T.shadow}`}}>
+                <div style={{fontSize:11,fontWeight:700,color:T.muted,letterSpacing:.8,textTransform:'uppercase',marginBottom:16}}>Company Logo</div>
+                <div style={{display:'flex',alignItems:'center',gap:20,flexWrap:'wrap'}}>
+                  <div style={{width:90,height:90,borderRadius:18,background:biz.logo?'transparent':T.surface,border:`2px dashed ${biz.logo?BRAND.yellow:T.border}`,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden',flexShrink:0,cursor:'pointer'}} onClick={()=>fileRef.current&&fileRef.current.click()}>
+                    {biz.logo
+                      ?<img src={biz.logo} alt="logo" style={{width:'100%',height:'100%',objectFit:'contain'}}/>
+                      :<div style={{textAlign:'center',padding:8}}><Icon name="imgIcon" size={28} color={T.muted}/><div style={{fontSize:10,color:T.muted,marginTop:4}}>Click to upload</div></div>
+                    }
+                  </div>
+                  <div>
+                    <div style={{fontSize:14,fontWeight:600,color:T.text,marginBottom:6}}>{biz.logo?'Logo uploaded':'No logo yet'}</div>
+                    <div style={{fontSize:12,color:T.muted,marginBottom:12}}>Supports PNG, JPG, SVG · Recommended 200×200px or larger · Will appear in topbar, labels, and purchase orders</div>
+                    <div style={{display:'flex',gap:8}}>
+                      <input ref={fileRef} type="file" accept="image/*" style={{display:'none'}} onChange={handleLogoUpload}/>
+                      <Btn sm v="ghost" T={T} ic="upload" onClick={()=>fileRef.current&&fileRef.current.click()}>{biz.logo?'Change Logo':'Upload Logo'}</Btn>
+                      {biz.logo&&<Btn sm v="danger" T={T} ic="trash" onClick={removeLogo}>Remove</Btn>}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Business name & details */}
+              <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:18,padding:'22px 24px',boxShadow:`0 1px 4px ${T.shadow}`}}>
+                <div style={{fontSize:11,fontWeight:700,color:T.muted,letterSpacing:.8,textTransform:'uppercase',marginBottom:16}}>Business Information</div>
+                <Fld label="Business / Shop Name" value={biz.name} onChange={v=>update('name',v)} T={T} ph="e.g. Reseller Central"/>
+                <Fld label="Tagline / Slogan" value={biz.tagline} onChange={v=>update('tagline',v)} T={T} ph="e.g. Games • Movies • Music • Fashion"/>
+                <Fld label="Owner / Contact Name" value={biz.ownerName} onChange={v=>update('ownerName',v)} T={T} ph="Your full name"/>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+                  <Fld label="Business Type" value={biz.businessType||''} onChange={v=>update('businessType',v)} T={T} ph="e.g. Sole Proprietor, LLC"/>
+                  <Fld label="Years in Business" value={biz.yearsInBusiness||''} onChange={v=>update('yearsInBusiness',v)} T={T} ph="e.g. 3"/>
+                </div>
+                <Fld label="Business Description" value={biz.description||''} onChange={v=>update('description',v)} T={T} rows={3} ph="Describe what you sell and where you source inventory…"/>
+              </div>
+
+              {/* Preview card */}
+              <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:18,padding:'22px 24px',boxShadow:`0 1px 4px ${T.shadow}`}}>
+                <div style={{fontSize:11,fontWeight:700,color:T.muted,letterSpacing:.8,textTransform:'uppercase',marginBottom:16}}>Purchase Order Header Preview</div>
+                <div style={{background:T.surface,borderRadius:14,padding:'20px 24px',border:`1px solid ${T.border}`}}>
+                  <div style={{display:'flex',alignItems:'center',gap:16,marginBottom:14,paddingBottom:14,borderBottom:`1px solid ${T.border}`}}>
+                    <div style={{width:56,height:56,borderRadius:12,background:biz.logo?'transparent':`linear-gradient(135deg,${BRAND.yellow},${BRAND.magenta})`,border:`1px solid ${T.border}`,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden',flexShrink:0}}>
+                      {biz.logo?<img src={biz.logo} alt="logo" style={{width:'100%',height:'100%',objectFit:'contain'}}/>:<span style={{fontSize:20,fontWeight:900,color:'#111'}}>{biz.name.charAt(0)}</span>}
+                    </div>
+                    <div>
+                      <div style={{fontSize:18,fontWeight:800,color:T.text}}>{biz.name||'My Reseller Shop'}</div>
+                      {biz.tagline&&<div style={{fontSize:12,color:T.muted,marginTop:2}}>{biz.tagline}</div>}
+                    </div>
+                    <div style={{marginLeft:'auto',textAlign:'right'}}>
+                      <div style={{fontSize:11,color:T.muted}}>PURCHASE ORDER</div>
+                      <div style={{fontSize:15,fontWeight:700,color:BRAND.yellow}}>#PO-2026-001</div>
+                    </div>
+                  </div>
+                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,fontSize:12}}>
+                    {[['Owner',biz.ownerName||'—'],['Email',biz.email||'—'],['Phone',biz.phone||'—'],['Website',biz.website||'—']].map(([l,v])=>(
+                      <div key={l}><span style={{color:T.muted}}>{l}: </span><span style={{color:T.text,fontWeight:500}}>{v}</span></div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── CONTACT & ADDRESS TAB ── */}
+          {tab==='contact'&&(
+            <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:18,padding:'22px 24px',boxShadow:`0 1px 4px ${T.shadow}`}}>
+              <div style={{fontSize:11,fontWeight:700,color:T.muted,letterSpacing:.8,textTransform:'uppercase',marginBottom:16}}>Contact Information</div>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+                <Fld label="Email Address" value={biz.email} onChange={v=>update('email',v)} T={T} ph="hello@myshop.com" type="email"/>
+                <Fld label="Phone Number" value={biz.phone} onChange={v=>update('phone',v)} T={T} ph="+1 (555) 000-0000" type="tel"/>
+              </div>
+              <Fld label="Website / Store URL" value={biz.website} onChange={v=>update('website',v)} T={T} ph="https://myshop.com"/>
+              <div style={{marginTop:8,marginBottom:16,height:1,background:T.border}}/>
+              <div style={{fontSize:11,fontWeight:700,color:T.muted,letterSpacing:.8,textTransform:'uppercase',marginBottom:16}}>Business Address</div>
+              <Fld label="Street Address" value={biz.address} onChange={v=>update('address',v)} T={T} ph="123 Main Street, Suite 4"/>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 120px',gap:12}}>
+                <Fld label="City" value={biz.city} onChange={v=>update('city',v)} T={T} ph="Grand Rapids"/>
+                <Fld label="State / Province" value={biz.state} onChange={v=>update('state',v)} T={T} ph="MI"/>
+                <Fld label="ZIP / Postal" value={biz.zip} onChange={v=>update('zip',v)} T={T} ph="49503"/>
+              </div>
+              <Fld label="Country" value={biz.country} onChange={v=>update('country',v)} T={T} ph="US"/>
+              <div style={{background:T.cyan+'10',border:`1px solid ${T.cyan}28`,borderRadius:12,padding:'12px 16px',fontSize:13,color:T.text,display:'flex',alignItems:'center',gap:10,marginTop:4}}>
+                <Icon name="info" size={16} color={T.cyan}/>
+                Your address will appear on Purchase Orders, invoices, and exported reports.
+              </div>
+            </div>
+          )}
+
+          {/* ── BILLING & TAX TAB ── */}
+          {tab==='billing'&&(
+            <div style={{display:'flex',flexDirection:'column',gap:14}}>
+              <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:18,padding:'22px 24px',boxShadow:`0 1px 4px ${T.shadow}`}}>
+                <div style={{fontSize:11,fontWeight:700,color:T.muted,letterSpacing:.8,textTransform:'uppercase',marginBottom:16}}>Tax Information</div>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+                  <Fld label="Tax ID / EIN" value={biz.taxId} onChange={v=>update('taxId',v)} T={T} ph="XX-XXXXXXX"/>
+                  <Fld label="Sales Tax Rate (%)" value={biz.taxRate||''} onChange={v=>update('taxRate',v)} T={T} ph="6.0" type="number"/>
+                </div>
+                <Fld label="Reseller Permit Number" value={biz.resellerPermit||''} onChange={v=>update('resellerPermit',v)} T={T} ph="Optional — for purchase exemption certificates"/>
+              </div>
+              <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:18,padding:'22px 24px',boxShadow:`0 1px 4px ${T.shadow}`}}>
+                <div style={{fontSize:11,fontWeight:700,color:T.muted,letterSpacing:.8,textTransform:'uppercase',marginBottom:16}}>Payment & Currency</div>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+                  <Sel label="Currency" value={biz.currency} onChange={v=>update('currency',v)} opts={['USD','EUR','GBP','CAD','AUD','JPY','MXN']} T={T}/>
+                  <Fld label="Payment Terms" value={biz.paymentTerms||''} onChange={v=>update('paymentTerms',v)} T={T} ph="e.g. Net 30, Due on Receipt"/>
+                </div>
+                <Fld label="Payment Methods Accepted" value={biz.paymentMethods||''} onChange={v=>update('paymentMethods',v)} T={T} ph="e.g. PayPal, Venmo, Cash, Check"/>
+              </div>
+              <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:18,padding:'22px 24px',boxShadow:`0 1px 4px ${T.shadow}`}}>
+                <div style={{fontSize:11,fontWeight:700,color:T.muted,letterSpacing:.8,textTransform:'uppercase',marginBottom:16}}>Purchase Order Settings</div>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+                  <Fld label="PO Number Prefix" value={biz.poPrefix||'PO'} onChange={v=>update('poPrefix',v)} T={T} ph="PO"/>
+                  <Fld label="Next PO Number" value={biz.poNextNum||'1001'} onChange={v=>update('poNextNum',v)} T={T} ph="1001" type="number"/>
+                </div>
+                <Fld label="PO Notes / Terms" value={biz.poNotes||''} onChange={v=>update('poNotes',v)} T={T} rows={3} ph="Standard terms and conditions that appear on every purchase order…"/>
+              </div>
+            </div>
+          )}
+
+          {/* ── PREFERENCES TAB ── */}
+          {tab==='preferences'&&(
+            <div style={{display:'flex',flexDirection:'column',gap:14}}>
+              <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:18,padding:'22px 24px',boxShadow:`0 1px 4px ${T.shadow}`}}>
+                <div style={{fontSize:11,fontWeight:700,color:T.muted,letterSpacing:.8,textTransform:'uppercase',marginBottom:16}}>Appearance</div>
+                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'14px 0',borderBottom:`1px solid ${T.border}`}}>
+                  <div>
+                    <div style={{fontSize:14,fontWeight:600,color:T.text}}>Dark Mode</div>
+                    <div style={{fontSize:12,color:T.muted,marginTop:2}}>Switch between dark and light interface</div>
+                  </div>
+                  <button onClick={()=>setDark(!dark)} style={{width:52,height:28,borderRadius:20,background:dark?BRAND.yellow:T.surface,border:`2px solid ${dark?BRAND.yellow:T.border}`,cursor:'pointer',position:'relative',transition:'all .2s',flexShrink:0}}>
+                    <div style={{width:20,height:20,borderRadius:'50%',background:dark?'#111':'#fff',position:'absolute',top:2,left:dark?28:2,transition:'left .2s',boxShadow:'0 1px 3px rgba(0,0,0,.3)'}}/>
+                  </button>
+                </div>
+                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'14px 0'}}>
+                  <div>
+                    <div style={{fontSize:14,fontWeight:600,color:T.text}}>Collapsed Sidebar by Default</div>
+                    <div style={{fontSize:12,color:T.muted,marginTop:2}}>Start with icon-only sidebar for more screen space</div>
+                  </div>
+                  <div style={{width:52,height:28,borderRadius:20,background:T.surface,border:`2px solid ${T.border}`,cursor:'pointer',position:'relative',flexShrink:0}}>
+                    <div style={{width:20,height:20,borderRadius:'50%',background:'#fff',position:'absolute',top:2,left:2,boxShadow:'0 1px 3px rgba(0,0,0,.3)'}}/>
+                  </div>
+                </div>
+              </div>
+              <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:18,padding:'22px 24px',boxShadow:`0 1px 4px ${T.shadow}`}}>
+                <div style={{fontSize:11,fontWeight:700,color:T.muted,letterSpacing:.8,textTransform:'uppercase',marginBottom:16}}>Mileage & Calculations</div>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+                  <Fld label="IRS Mileage Rate ($/mi)" value={biz.mileageRate} onChange={v=>update('mileageRate',parseFloat(v)||0.59)} T={T} ph="0.59" type="number"/>
+                  <Sel label="Timezone" value={biz.timezone||'America/New_York'} onChange={v=>update('timezone',v)} opts={['America/New_York','America/Chicago','America/Denver','America/Los_Angeles','America/Anchorage','Pacific/Honolulu']} T={T}/>
+                </div>
+              </div>
+              <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:18,padding:'22px 24px',boxShadow:`0 1px 4px ${T.shadow}`}}>
+                <div style={{fontSize:11,fontWeight:700,color:T.muted,letterSpacing:.8,textTransform:'uppercase',marginBottom:16}}>Default Marketplace Platforms</div>
+                <div style={{fontSize:13,color:T.muted,marginBottom:14}}>Select the platforms you actively sell on to streamline dropdowns throughout the app.</div>
+                <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                  {['eBay','Poshmark','Mercari','Etsy','FB Marketplace','Whatnot','Craigslist','Amazon','Depop'].map(p=>{
+                    const enabled=(biz.platforms||['eBay','Poshmark','Mercari']).includes(p);
+                    return(
+                      <button key={p} onClick={()=>{const curr=biz.platforms||['eBay','Poshmark','Mercari'];update('platforms',enabled?curr.filter(x=>x!==p):[...curr,p]);}} style={{background:enabled?BRAND.yellow:T.surface,color:enabled?'#111':T.muted,border:`1px solid ${enabled?BRAND.yellow:T.border}`,borderRadius:20,padding:'6px 14px',fontSize:13,fontWeight:600,cursor:'pointer',fontFamily:"'Inter',sans-serif",transition:'all .14s'}}>{p}</button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div style={{background:T.danger+'10',border:`1px solid ${T.danger}28`,borderRadius:18,padding:'22px 24px'}}>
+                <div style={{fontSize:11,fontWeight:700,color:T.danger,letterSpacing:.8,textTransform:'uppercase',marginBottom:12}}>Danger Zone</div>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                  <div><div style={{fontSize:14,fontWeight:600,color:T.text}}>Reset All Settings</div><div style={{fontSize:12,color:T.muted,marginTop:2}}>Revert all business profile settings to defaults. Inventory data is not affected.</div></div>
+                  <Btn sm v="danger" T={T} ic="trash" onClick={()=>{if(window.confirm('Reset all settings to defaults?')){setBiz({name:'My Reseller Shop',tagline:'Games • Movies • Music • Fashion',ownerName:'',email:'',phone:'',address:'',city:'',state:'',zip:'',country:'US',website:'',taxId:'',logo:null,currency:'USD',mileageRate:0.59,timezone:'America/New_York'});}}}>Reset</Btn>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── ABOUT & HELP TAB ── */}
+          {tab==='about'&&(
+            <div style={{display:'flex',flexDirection:'column',gap:14}}>
+              {/* App info card */}
+              <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:18,padding:'28px 26px',boxShadow:`0 1px 4px ${T.shadow}`,textAlign:'center'}}>
+                <div style={{marginBottom:16,display:'flex',justifyContent:'center'}}>
+                  <LogoSVG size={52}/>
+                </div>
+                <div style={{fontSize:20,fontWeight:800,color:T.text,marginBottom:4}}>Reseller Central</div>
+                <div style={{fontSize:14,fontWeight:500,color:T.muted,marginBottom:4}}>The Free Reseller Management Platform</div>
+                <div style={{fontSize:13,color:T.muted,marginBottom:16}}>Version 1.0.0 · Single-file web app · No installation required</div>
+                <div style={{display:'flex',gap:10,justifyContent:'center',flexWrap:'wrap'}}>
+                  <a href="https://retroreplayhub.com" target="_blank" rel="noopener noreferrer" style={{textDecoration:'none'}}>
+                    <Btn sm v="ghost" T={T} ic="globe">retroreplayhub.com</Btn>
+                  </a>
+                  <a href="https://github.com/retroreplayhub/reseller-os" target="_blank" rel="noopener noreferrer" style={{textDecoration:'none'}}>
+                    <Btn sm v="ghost" T={T} ic="github">View on GitHub</Btn>
+                  </a>
+                </div>
+              </div>
+
+              {/* Support disclaimer */}
+              <div style={{background:T.warning+'12',border:`1px solid ${T.warning}30`,borderRadius:18,padding:'22px 24px',boxShadow:`0 1px 4px ${T.shadow}`}}>
+                <div style={{display:'flex',gap:12,marginBottom:12}}>
+                  <Icon name="alert" size={22} color={T.warning}/>
+                  <div style={{fontSize:16,fontWeight:700,color:T.text}}>Community App — No Official Support</div>
+                </div>
+                <div style={{fontSize:14,color:T.muted,lineHeight:1.7,marginBottom:14}}>
+                  This app is provided <b style={{color:T.text}}>free of charge</b> by RetroReplayHub.com as a gift to the reseller community. We do not offer paid support, SLAs, or guaranteed response times.
+                </div>
+                <div style={{fontSize:14,color:T.muted,lineHeight:1.7,marginBottom:14}}>
+                  However, we <b style={{color:T.text}}>will do our best</b> to release frequent updates, fix bugs, and add new features based on community feedback. Watch the GitHub repo for releases.
+                </div>
+                <div style={{background:T.success+'12',border:`1px solid ${T.success}28`,borderRadius:12,padding:'12px 16px',fontSize:13,color:T.success,fontWeight:600,display:'flex',alignItems:'center',gap:8}}>
+                  <Icon name="heart" size={14} color={T.success}/>
+                  If this app helps your business, consider giving it a ⭐ on GitHub and sharing it with other resellers!
+                </div>
+              </div>
+
+              {/* Quick start guide */}
+              <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:18,padding:'22px 24px',boxShadow:`0 1px 4px ${T.shadow}`}}>
+                <div style={{fontSize:11,fontWeight:700,color:T.muted,letterSpacing:.8,textTransform:'uppercase',marginBottom:16}}>Quick Start Guide</div>
+                {[
+                  ['1','Set up your business profile','Fill in your name, logo, and contact info above. This appears on purchase orders and exported reports.'],
+                  ['2','Add your inventory','Go to Inventory → Add Item, or use the Barcode scan shortcut to quickly add items you source.'],
+                  ['3','Use the Profit Calculator','Before buying at a thrift store, use the Calculator to check ROI before committing to a purchase.'],
+                  ['4','Track expenses & mileage','Every sourcing trip and shipping supply purchase adds up — log them for accurate tax deductions.'],
+                  ['5','Run reports & export','At tax time, go to Reports → Export PDF to get an accountant-ready P&L statement.'],
+                ].map(([n,title,desc])=>(
+                  <div key={n} style={{display:'flex',gap:14,padding:'12px 0',borderBottom:`1px solid ${T.border}`}}>
+                    <div style={{width:28,height:28,borderRadius:8,background:BRAND.yellow+'18',border:`1px solid ${BRAND.yellow}30`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,fontWeight:800,color:BRAND.yellow,flexShrink:0}}>{n}</div>
+                    <div><div style={{fontSize:14,fontWeight:600,color:T.text,marginBottom:3}}>{title}</div><div style={{fontSize:12,color:T.muted,lineHeight:1.5}}>{desc}</div></div>
+                  </div>
+                ))}
+              </div>
+
+              {/* What's new */}
+              <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:18,padding:'22px 24px',boxShadow:`0 1px 4px ${T.shadow}`}}>
+                <div style={{fontSize:11,fontWeight:700,color:T.muted,letterSpacing:.8,textTransform:'uppercase',marginBottom:16}}>What's New · v1.0.0</div>
+                {['10 fully-featured pages: Dashboard, Inventory, Calculator, Expenses, Mileage, Reports, Goals, Storage, Labels, Import/Export','Business profile with custom logo — appears on purchase orders and reports','Dark & Light mode toggle','Real CSV export for inventory, expenses, and mileage logs','Label printing for Avery 5160, Avery 8160, Dymo, and Zebra formats','Goal & challenge tracking with progress bars','Aging inventory detection and alerts'].map((item,i)=>(
+                  <div key={i} style={{display:'flex',gap:10,padding:'8px 0',borderBottom:i<6?`1px solid ${T.border}`:'none',alignItems:'flex-start'}}>
+                    <Icon name="check" size={14} color={T.success} style={{marginTop:2,flexShrink:0}}/>
+                    <div style={{fontSize:13,color:T.text}}>{item}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Roadmap */}
+              <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:18,padding:'22px 24px',boxShadow:`0 1px 4px ${T.shadow}`}}>
+                <div style={{fontSize:11,fontWeight:700,color:T.muted,letterSpacing:.8,textTransform:'uppercase',marginBottom:16}}>Planned Features</div>
+                {['AI photo recognition & listing generator','Marketplace sync (eBay, Poshmark, Mercari API)','Purchase Order PDF generator','Barcode lookup with 690M+ product database','Bulk photo processing for inventory batches','AI pricing recommendations','Multi-user / team collaboration','Mobile PWA with offline support'].map((item,i)=>(
+                  <div key={i} style={{display:'flex',gap:10,padding:'8px 0',borderBottom:i<7?`1px solid ${T.border}`:'none',alignItems:'flex-start'}}>
+                    <Icon name="zap" size={14} color={BRAND.yellow} style={{marginTop:2,flexShrink:0}}/>
+                    <div style={{fontSize:13,color:T.muted}}>{item}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Save button row at bottom */}
+          {tab!=='about'&&<div style={{display:'flex',justifyContent:'flex-end',paddingTop:8}}>
+            <Btn ic="check" T={T} onClick={save}>Save Changes</Btn>
+          </div>}
+        </div>
+      </div>
+
+      {/* ── FOOTER ── */}
+      <div style={{marginTop:32,paddingTop:20,borderTop:`1px solid ${T.border}`,textAlign:'center'}}>
+        <div style={{fontSize:12,color:T.muted,marginBottom:6}}>
+          Made with <span style={{color:T.danger}}>♥</span> by{' '}
+          <a href="https://retroreplayhub.com" target="_blank" rel="noopener noreferrer" style={{color:BRAND.yellow,textDecoration:'none',fontWeight:600}}>RetroReplayHub.com</a>
+          {' '}· Free for the reseller community
+        </div>
+        <div style={{fontSize:11,color:T.faint||T.muted}}>
+          Reseller Central v1.0.0 · Free & Open Source · No Support SLA · Updates Released as Available
+        </div>
+        <div style={{fontSize:11,color:T.faint||T.muted,marginTop:4}}>
+          <a href="https://github.com/retroreplayhub/reseller-os" target="_blank" rel="noopener noreferrer" style={{color:T.muted,textDecoration:'none'}}>GitHub</a>
+          {' · '}
+          <span style={{cursor:'pointer',color:T.muted}} onClick={()=>setTab('about')}>Help & About</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function App(){
+  const [dark,setDark]=useState(true);
+  const T=dark?DARK:LIGHT;
+  const [page,setPage]=useState('home');
+  const [col,setCol]=useState(false);
+  const [inventory,setInventory]=useState(INIT_INV);
+  const [expenses,setExpenses]=useState(INIT_EXP);
+  const [mileage,setMileage]=useState(INIT_MILE);
+  const [goals,setGoals]=useState(INIT_GOALS);
+  const BIZ_DEFAULT={name:'My Reseller Shop',tagline:'Games • Movies • Music • Fashion',ownerName:'',email:'',phone:'',address:'',city:'',state:'',zip:'',country:'US',website:'',taxId:'',logo:null,currency:'USD',mileageRate:0.59,timezone:'America/New_York'};
+  const [biz,setBiz]=useState(()=>{try{const s=localStorage.getItem('rrh_biz');return s?JSON.parse(s):BIZ_DEFAULT;}catch{return BIZ_DEFAULT;}});
+
+  useEffect(()=>{try{localStorage.setItem('rrh_biz',JSON.stringify(biz));}catch{}},[biz]);
+  useEffect(()=>{
+    document.body.style.background=T.bg;
+    document.body.style.color=T.text;
+    const st=document.getElementById('scrollStyle');
+    if(st)st.textContent=`::-webkit-scrollbar-thumb{background:${T.scrollThumb}!important}`;
+  },[dark,T]);
+
+  const nav=NAV_ITEMS.find(n=>n.id===page)||NAV_ITEMS[0];
+
+  const PAGES={
+    home:<HomePage inventory={inventory} expenses={expenses} mileage={mileage} goals={goals} T={T} onNav={setPage}/>,
+    inventory:<InventoryPage inventory={inventory} setInventory={setInventory} T={T}/>,
+    profit:<ProfitPage T={T}/>,
+    expenses:<ExpensesPage expenses={expenses} setExpenses={setExpenses} T={T}/>,
+    mileage:<MileagePage mileage={mileage} setMileage={setMileage} T={T}/>,
+    reports:<ReportsPage inventory={inventory} expenses={expenses} T={T}/>,
+    goals:<GoalsPage goals={goals} setGoals={setGoals} T={T}/>,
+    storage:<StoragePage inventory={inventory} T={T}/>,
+    labels:<LabelsPage inventory={inventory} T={T}/>,
+    export:<ExportPage inventory={inventory} expenses={expenses} mileage={mileage} T={T}/>,
+    settings:<SettingsPage biz={biz} setBiz={setBiz} dark={dark} setDark={setDark} T={T}/>,
+  };
+
+  return(
+    <div style={{display:'flex',height:'100vh',background:T.bg,color:T.text,overflow:'hidden',transition:'background 0.2s,color 0.2s'}}>
+      <style id="scrollStyle">{`::-webkit-scrollbar-thumb{background:${T.scrollThumb}!important}`}</style>
+      <Sidebar active={page} onNav={setPage} col={col} setCol={setCol} T={T} dark={dark} setDark={setDark} biz={biz}/>
+
+      <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
+        {/* Top bar */}
+        <div style={{height:58,borderBottom:`1px solid ${T.border}`,display:'flex',alignItems:'center',
+          justifyContent:'space-between',padding:'0 28px',background:T.topbar,flexShrink:0,
+          boxShadow:`0 1px 4px ${T.shadow}`}}>
+          <div style={{display:'flex',alignItems:'center',gap:10}}>
+            <Icon name={nav.icon} size={17} color={T.muted}/>
+            <span style={{fontSize:14,fontWeight:600,color:T.text}}>{nav.label}</span>
+          </div>
+          <div style={{display:'flex',alignItems:'center',gap:12}}>
+            <div style={{display:'flex',alignItems:'center',gap:6}}>
+              <div style={{width:7,height:7,borderRadius:'50%',background:T.success}}/>
+              <span style={{fontSize:12,color:T.muted,fontWeight:500}}>Live</span>
+            </div>
+            <div style={{width:1,height:20,background:T.border}}/>
+            <button onClick={()=>setPage('settings')} title="Settings" style={{background:'none',border:'none',cursor:'pointer',padding:3,lineHeight:0,borderRadius:8}}>
+              <Icon name="settings" size={17} color={T.muted}/>
+            </button>
+            <div onClick={()=>setPage('settings')} style={{width:32,height:32,borderRadius:10,background:biz&&biz.logo?'transparent':`linear-gradient(135deg,${BRAND.yellow},${BRAND.magenta})`,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden',cursor:'pointer',flexShrink:0}}>
+              {biz&&biz.logo?<img src={biz.logo} alt="logo" style={{width:'100%',height:'100%',objectFit:'cover'}}/>:<span style={{fontSize:14,fontWeight:900,color:'#111',fontFamily:"'Inter',sans-serif"}}>{biz&&biz.name?biz.name.charAt(0).toUpperCase():'R'}</span>}
+            </div>
+          </div>
+        </div>
+
+        {PAGES[page]}
+        {/* ── GLOBAL FOOTER BAR ── */}
+        <div style={{background:T.card,borderTop:`1px solid ${T.border}`,padding:'8px 28px',display:'flex',alignItems:'center',justifyContent:'space-between',flexShrink:0}}>
+          <div style={{fontSize:11,color:T.muted}}>
+            Made with ♥ by{' '}
+            <a href="https://retroreplayhub.com" target="_blank" rel="noopener noreferrer" style={{color:BRAND.yellow,textDecoration:'none',fontWeight:600}}>RetroReplayHub.com</a>
+            {' '}· Free reseller tool · No support SLA · Updates released as available
+          </div>
+          <div style={{display:'flex',alignItems:'center',gap:12,flexShrink:0}}>
+            <a href="https://github.com/retroreplayhub/reseller-os" target="_blank" rel="noopener noreferrer" style={{display:'flex',alignItems:'center',gap:5,fontSize:11,color:T.muted,textDecoration:'none'}}>
+              <Icon name="github" size={13} color={T.muted}/>GitHub
+            </a>
+            <span style={{fontSize:11,color:T.muted,cursor:'pointer'}} onClick={()=>setPage('settings')}>v1.0.0</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
