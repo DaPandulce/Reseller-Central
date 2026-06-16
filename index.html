@@ -527,12 +527,14 @@ function HomePage({inventory,expenses,mileage,goals,T,onNav}){
 }
 
 /* ── INVENTORY ──────────────────────────────────────────────── */
-function InventoryPage({inventory,setInventory,T,lookupBarcode}){
+function InventoryPage({inventory,setInventory,biz,setBiz,T,lookupBarcode}){
   const [filterStatus,setFilterStatus]=useState('All');
   const [search,setSearch]=useState('');
   const [showAdd,setShowAdd]=useState(false);
   const [showScan,setShowScan]=useState(false);
+  const [showSku,setShowSku]=useState(false);
   const [viewItem,setViewItem]=useState(null);
+  const [editItem,setEditItem]=useState(null);
 
   /* Scan / barcode state */
   const [scanCode,setScanCode]=useState('');
@@ -540,13 +542,33 @@ function InventoryPage({inventory,setInventory,T,lookupBarcode}){
   const [scanLoading,setScanLoading]=useState(false);
   const [scanError,setScanError]=useState('');
 
+  /* SKU sequence settings (persisted in biz) */
+  const skuPrefix=(biz&&biz.skuPrefix!==undefined)?biz.skuPrefix:'RRH-';
+  const skuNext=(biz&&biz.skuNext!==undefined)?biz.skuNext:1;
+  const skuPad=(biz&&biz.skuPad!==undefined)?biz.skuPad:4;
+  const [skuDraft,setSkuDraft]=useState({prefix:skuPrefix,next:String(skuNext),pad:String(skuPad)});
+  function nextSku(){
+    return skuPrefix+String(skuNext).padStart(skuPad,'0');
+  }
+  function bumpSku(){
+    if(setBiz)setBiz(prev=>({...prev,skuNext:(prev.skuNext||1)+1}));
+  }
+  function saveSkuSettings(){
+    if(setBiz)setBiz(prev=>({...prev,
+      skuPrefix:skuDraft.prefix,
+      skuNext:parseInt(skuDraft.next)||1,
+      skuPad:parseInt(skuDraft.pad)||4,
+    }));
+    setShowSku(false);
+  }
+
   async function doLookup(){
     const code=scanCode.trim();
     if(!code)return;
     setScanLoading(true);setScanError('');setScanResult(null);
     try{
       const r=await lookupBarcode(code);
-      if(r){setScanResult(r);}
+      if(r){setScanResult({...r,upc:code});}
       else{setScanError('Product not found in any database. Try adding manually.');}
     }catch(e){
       setScanError('Lookup failed — check your internet connection.');
@@ -558,12 +580,17 @@ function InventoryPage({inventory,setInventory,T,lookupBarcode}){
     setShowScan(false);setScanCode('');setScanResult(null);setScanError('');
   }
 
+  /* Full item schema incl. eBay report fields */
   const blankItem={title:'',category:'',brand:'',condition:'Good',qty:'1',
-    cost:'',price:'',status:'Unlisted',platform:'-',location:'',notes:''};
+    cost:'',price:'',status:'Unlisted',platform:'-',location:'',notes:'',
+    itemNumber:'',customSku:'',format:'FIXED_PRICE',currency:'USD',startPrice:'',
+    currentPrice:'',watchers:'',bids:'',startDate:'',endDate:'',
+    ebayCategory:'',ebayCategoryId:'',upc:'',ean:'',isbn:'',ebayProductId:'',listingSite:'US'};
   const [ni,setNi]=useState(blankItem);
 
   function openAddFromScan(r){
-    setNi(prev=>({...prev, title:r.title||'', brand:r.brand||'', category:r.category||''}));
+    setNi(prev=>({...prev, title:r.title||'', brand:r.brand||'', category:r.category||'',
+      upc:r.upc||'', isbn:r.isbn||''}));
     closeScan();
     setShowAdd(true);
   }
@@ -571,7 +598,7 @@ function InventoryPage({inventory,setInventory,T,lookupBarcode}){
   function addItem(){
     if(!ni.title.trim())return;
     const id=Date.now();
-    const sku='RRH-'+String(inventory.length+1).padStart(4,'0');
+    const sku=nextSku();
     const item={...ni,id,sku,
       qty:parseInt(ni.qty)||1,
       cost:parseFloat(ni.cost)||0,
@@ -580,29 +607,149 @@ function InventoryPage({inventory,setInventory,T,lookupBarcode}){
       dateAdded:new Date().toISOString().slice(0,10)
     };
     setInventory(prev=>[...prev,item]);
+    bumpSku();
     setNi(blankItem);
     setShowAdd(false);
   }
 
+  /* EDIT existing item */
+  function startEdit(item){
+    setEditItem({...blankItem,...item,
+      qty:String(item.qty||1),
+      cost:String(item.cost||''),
+      price:String(item.price||''),
+    });
+    setViewItem(null);
+  }
+  function saveEdit(){
+    if(!editItem.title.trim())return;
+    const updated={...editItem,
+      qty:parseInt(editItem.qty)||1,
+      cost:parseFloat(editItem.cost)||0,
+      price:parseFloat(editItem.price)||0,
+    };
+    setInventory(prev=>prev.map(i=>i.id===updated.id?updated:i));
+    setEditItem(null);
+  }
+
   const statuses=['All','Unlisted','Listed','Sold','Returned','Archived'];
   const statusColor={Listed:T.cyan,Sold:T.success,Unlisted:T.warning,Returned:T.danger,Archived:T.muted};
-  const catEmoji=c=>c==='Video Games'?'🎮':c==='Electronics'?'📱':c==='Clothing'?'👕':c==='Books'?'📚':'📦';
+  const catEmoji=c=>c==='Video Games'?'🎮':c==='Electronics'?'📱':c==='Clothing'?'👕':c==='Books'?'📚':c==='DVDs & Blu-ray Discs'?'📀':'📦';
 
   const filtered=inventory.filter(i=>{
     const matchStatus=filterStatus==='All'||i.status===filterStatus;
     const q=search.toLowerCase();
-    const matchSearch=!q||(i.title||'').toLowerCase().includes(q)||(i.sku||'').toLowerCase().includes(q)||(i.brand||'').toLowerCase().includes(q);
+    const matchSearch=!q||(i.title||'').toLowerCase().includes(q)||(i.sku||'').toLowerCase().includes(q)||(i.brand||'').toLowerCase().includes(q)||(i.upc||'').includes(q);
     return matchStatus&&matchSearch;
   });
 
   const invValue=inventory.reduce((s,i)=>s+(parseFloat(i.cost)||0),0);
   const potProfit=inventory.reduce((s,i)=>s+(parseFloat(i.price)||0)-(parseFloat(i.cost)||0),0);
 
+  /* Shared form-fields renderer for both Add and Edit modals */
+  function ItemForm({data,set}){
+    const selStyle={background:T.inputBg,border:`1.5px solid ${T.border}`,borderRadius:10,color:T.text,
+      padding:'10px 14px',fontSize:14,width:'100%',fontFamily:"'Inter',sans-serif",outline:'none'};
+    const lblStyle={fontSize:12,fontWeight:600,color:T.muted,marginBottom:6};
+    return(
+      <div>
+        <div style={{fontSize:11,fontWeight:700,color:BRAND.yellow,letterSpacing:.8,textTransform:'uppercase',marginBottom:12}}>Core Details</div>
+        <Field label="Title *" value={data.title} onChange={v=>set({...data,title:v})} T={T}/>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+          <Field label="Category" value={data.category} onChange={v=>set({...data,category:v})} T={T}/>
+          <Field label="Brand" value={data.brand} onChange={v=>set({...data,brand:v})} T={T}/>
+        </div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 80px',gap:12}}>
+          <Field label="Cost" value={data.cost} onChange={v=>set({...data,cost:v})} type="number" prefix="$" T={T}/>
+          <Field label="List Price" value={data.price} onChange={v=>set({...data,price:v})} type="number" prefix="$" T={T}/>
+          <Field label="Qty" value={data.qty} onChange={v=>set({...data,qty:v})} type="number" T={T}/>
+        </div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+          <div style={{marginBottom:14}}>
+            <div style={lblStyle}>Condition</div>
+            <select value={data.condition} onChange={e=>set({...data,condition:e.target.value})} style={selStyle}>
+              {['New','Like New','Very Good','Good','Acceptable','Fair','Poor','For parts'].map(c=><option key={c}>{c}</option>)}
+            </select>
+          </div>
+          <div style={{marginBottom:14}}>
+            <div style={lblStyle}>Status</div>
+            <select value={data.status} onChange={e=>set({...data,status:e.target.value})} style={selStyle}>
+              {['Unlisted','Listed','Sold','Returned','Archived'].map(s=><option key={s}>{s}</option>)}
+            </select>
+          </div>
+        </div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+          <div style={{marginBottom:14}}>
+            <div style={lblStyle}>Platform</div>
+            <select value={data.platform} onChange={e=>set({...data,platform:e.target.value})} style={selStyle}>
+              {['-','eBay','Poshmark','Mercari','Etsy','FB Marketplace','Whatnot','Amazon','Depop'].map(p=><option key={p}>{p}</option>)}
+            </select>
+          </div>
+          <Field label="Storage Location" value={data.location} onChange={v=>set({...data,location:v})} T={T}/>
+        </div>
+
+        <div style={{fontSize:11,fontWeight:700,color:BRAND.yellow,letterSpacing:.8,textTransform:'uppercase',margin:'8px 0 12px'}}>eBay / Listing Fields</div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+          <Field label="Item Number" value={data.itemNumber} onChange={v=>set({...data,itemNumber:v})} T={T}/>
+          <Field label="Custom Label (SKU)" value={data.customSku} onChange={v=>set({...data,customSku:v})} T={T}/>
+        </div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+          <div style={{marginBottom:14}}>
+            <div style={lblStyle}>Format</div>
+            <select value={data.format} onChange={e=>set({...data,format:e.target.value})} style={selStyle}>
+              {['FIXED_PRICE','AUCTION','STORE_INVENTORY'].map(f=><option key={f}>{f}</option>)}
+            </select>
+          </div>
+          <div style={{marginBottom:14}}>
+            <div style={lblStyle}>Currency</div>
+            <select value={data.currency} onChange={e=>set({...data,currency:e.target.value})} style={selStyle}>
+              {['USD','EUR','GBP','CAD','AUD'].map(c=><option key={c}>{c}</option>)}
+            </select>
+          </div>
+        </div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+          <Field label="Start Price" value={data.startPrice} onChange={v=>set({...data,startPrice:v})} type="number" prefix="$" T={T}/>
+          <Field label="Current Price" value={data.currentPrice} onChange={v=>set({...data,currentPrice:v})} type="number" prefix="$" T={T}/>
+        </div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+          <Field label="Watchers" value={data.watchers} onChange={v=>set({...data,watchers:v})} type="number" T={T}/>
+          <Field label="Bids" value={data.bids} onChange={v=>set({...data,bids:v})} type="number" T={T}/>
+        </div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+          <Field label="Start Date" value={data.startDate} onChange={v=>set({...data,startDate:v})} T={T}/>
+          <Field label="End Date" value={data.endDate} onChange={v=>set({...data,endDate:v})} T={T}/>
+        </div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+          <Field label="eBay Category" value={data.ebayCategory} onChange={v=>set({...data,ebayCategory:v})} T={T}/>
+          <Field label="eBay Category #" value={data.ebayCategoryId} onChange={v=>set({...data,ebayCategoryId:v})} T={T}/>
+        </div>
+        <Field label="eBay Product ID (ePID)" value={data.ebayProductId} onChange={v=>set({...data,ebayProductId:v})} T={T}/>
+
+        <div style={{fontSize:11,fontWeight:700,color:BRAND.yellow,letterSpacing:.8,textTransform:'uppercase',margin:'8px 0 12px'}}>Product Identifiers</div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:12}}>
+          <Field label="UPC" value={data.upc} onChange={v=>set({...data,upc:v})} T={T}/>
+          <Field label="EAN" value={data.ean} onChange={v=>set({...data,ean:v})} T={T}/>
+          <Field label="ISBN" value={data.isbn} onChange={v=>set({...data,isbn:v})} T={T}/>
+        </div>
+
+        <Field label="Notes" value={data.notes} onChange={v=>set({...data,notes:v})} T={T}/>
+        {data.cost&&data.price&&(
+          <div style={{background:T.success+'12',border:`1px solid ${T.success}28`,borderRadius:10,
+            padding:'10px 14px',marginBottom:14,fontSize:13,color:T.success,fontWeight:600}}>
+            Estimated Profit: ${(parseFloat(data.price||0)-parseFloat(data.cost||0)).toFixed(2)} ·
+            ROI: {parseFloat(data.cost)>0?Math.round(((parseFloat(data.price)-parseFloat(data.cost))/parseFloat(data.cost))*100):0}%
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return(
     <div style={{padding:'24px 28px',overflowY:'auto',flex:1}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
         <div style={{fontSize:26,fontWeight:800,color:T.text,letterSpacing:-0.5}}>Inventory</div>
         <div style={{display:'flex',gap:8}}>
+          <Btn onClick={()=>{setSkuDraft({prefix:skuPrefix,next:String(skuNext),pad:String(skuPad)});setShowSku(true);}} icon="tag" variant="ghost" T={T}>SKU: {nextSku()}</Btn>
           <Btn onClick={()=>setShowScan(true)} icon="scan" variant="ghost" T={T}>Scan Barcode</Btn>
           <Btn onClick={()=>setShowAdd(true)} icon="plus" T={T}>Add Item</Btn>
         </div>
@@ -624,7 +771,7 @@ function InventoryPage({inventory,setInventory,T,lookupBarcode}){
           border:`1.5px solid ${T.border}`,borderRadius:12,padding:'0 14px',gap:8}}>
           <Icon name="search" size={15} color={T.muted}/>
           <input value={search} onChange={e=>setSearch(e.target.value)}
-            placeholder="Search title, brand, SKU…"
+            placeholder="Search title, brand, SKU, UPC…"
             style={{background:'transparent',border:'none',outline:'none',color:T.text,
               padding:'10px 0',fontSize:14,width:'100%',fontFamily:"'Inter',sans-serif"}}/>
           {search&&<button onClick={()=>setSearch('')} style={{background:'none',border:'none',
@@ -665,47 +812,63 @@ function InventoryPage({inventory,setInventory,T,lookupBarcode}){
           </div>
         )}
         {filtered.map(item=>(
-          <div key={item.id} onClick={()=>setViewItem(item)}
+          <div key={item.id}
             style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,
               padding:'13px 17px',display:'flex',alignItems:'center',gap:14,
-              boxShadow:`0 1px 3px ${T.shadow}`,cursor:'pointer',transition:'border-color .14s'}}
-            onMouseEnter={e=>e.currentTarget.style.borderColor=BRAND.yellow+'60'}
-            onMouseLeave={e=>e.currentTarget.style.borderColor=T.border}>
-            <div style={{width:44,height:44,borderRadius:12,background:T.surface,
-              display:'flex',alignItems:'center',justifyContent:'center',fontSize:22,flexShrink:0}}>
-              {catEmoji(item.category)}
-            </div>
-            <div style={{flex:1,minWidth:0}}>
-              <div style={{fontSize:14,fontWeight:600,color:T.text,overflow:'hidden',
-                textOverflow:'ellipsis',whiteSpace:'nowrap',marginBottom:4}}>{item.title}</div>
-              <div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}}>
-                {item.sku&&<Badge text={item.sku} color={BRAND.magenta} T={T}/>}
-                {item.category&&<span style={{fontSize:12,color:T.muted}}>{item.category}</span>}
-                {item.platform&&item.platform!=='-'&&<Badge text={item.platform} color={T.cyan} T={T}/>}
-                {item.location&&<span style={{fontSize:11,color:T.muted,display:'flex',alignItems:'center',gap:3}}>
-                  <Icon name="mappin" size={11} color={T.muted}/>{item.location}
-                </span>}
-                {(item.daysListed||0)>30&&<Badge text={`${item.daysListed}d aging`} color={T.danger} T={T}/>}
+              boxShadow:`0 1px 3px ${T.shadow}`,transition:'border-color .14s'}}>
+            <div onClick={()=>setViewItem(item)} style={{display:'flex',alignItems:'center',gap:14,flex:1,minWidth:0,cursor:'pointer'}}>
+              <div style={{width:46,height:46,borderRadius:12,background:T.surface,flexShrink:0,
+                display:'flex',alignItems:'center',justifyContent:'center',fontSize:22}}>
+                {catEmoji(item.category)}
+              </div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:14,fontWeight:600,color:T.text,whiteSpace:'nowrap',
+                  overflow:'hidden',textOverflow:'ellipsis',marginBottom:3}}>{item.title}</div>
+                <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+                  {item.sku&&<Badge text={item.sku} color={BRAND.magenta} T={T}/>}
+                  <span style={{fontSize:12,color:T.muted}}>{item.category||'Uncategorized'}</span>
+                  {item.location&&<span style={{fontSize:12,color:T.subtleMuted}}>· {item.location}</span>}
+                </div>
+              </div>
+              <div style={{textAlign:'right',flexShrink:0}}>
+                <div style={{fontSize:15,fontWeight:700,color:T.text}}>${(parseFloat(item.price)||0).toFixed(2)}</div>
+                <Badge text={item.status||'Unlisted'} color={statusColor[item.status]||T.muted} T={T}/>
               </div>
             </div>
-            <div style={{textAlign:'right',flexShrink:0}}>
-              <div style={{fontSize:16,fontWeight:800,color:T.text}}>${(parseFloat(item.price)||0).toFixed(2)}</div>
-              <div style={{fontSize:11,color:T.muted,margin:'2px 0 5px'}}>
-                cost ${(parseFloat(item.cost)||0).toFixed(2)}
-                {item.cost&&item.price?' · ROI '+(item.cost>0?Math.round(((item.price-item.cost)/item.cost)*100):0)+'%':''}
-              </div>
-              <Badge text={item.status||'Unlisted'} color={statusColor[item.status]||T.muted} T={T}/>
-            </div>
+            <button onClick={()=>startEdit(item)} title="Edit item"
+              style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:9,padding:8,
+                cursor:'pointer',lineHeight:0,flexShrink:0}}>
+              <Icon name="edit" size={15} color={T.muted}/>
+            </button>
           </div>
         ))}
       </div>
 
-      {/* ── BARCODE SCAN MODAL ── */}
-      <Modal show={showScan} onClose={closeScan} title="Scan / Lookup Barcode" width={500} T={T}>
-        <div style={{background:T.surface,borderRadius:12,padding:'12px 16px',marginBottom:16,fontSize:13,color:T.muted}}>
-          <b style={{color:T.text}}>How to use:</b> Plug in a USB/Bluetooth barcode scanner and scan any item — 
-          it will type the code below automatically. Or type a UPC, EAN, or ISBN manually.
+      {/* ── SKU SEQUENCE MODAL ── */}
+      <Modal show={showSku} onClose={()=>setShowSku(false)} title="SKU Sequence Settings" width={440} T={T}>
+        <div style={{fontSize:13,color:T.muted,marginBottom:18}}>
+          Customize how new SKUs are generated. The next item will be assigned the SKU shown below.
         </div>
+        <Field label="SKU Prefix" value={skuDraft.prefix} onChange={v=>setSkuDraft({...skuDraft,prefix:v})} T={T}/>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+          <Field label="Next Number" value={skuDraft.next} onChange={v=>setSkuDraft({...skuDraft,next:v})} type="number" T={T}/>
+          <Field label="Zero Padding" value={skuDraft.pad} onChange={v=>setSkuDraft({...skuDraft,pad:v})} type="number" T={T}/>
+        </div>
+        <div style={{background:T.surface,borderRadius:10,padding:'14px 16px',marginBottom:16,
+          display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+          <span style={{fontSize:12,color:T.muted,fontWeight:600,textTransform:'uppercase'}}>Preview</span>
+          <span style={{fontSize:18,fontWeight:800,color:BRAND.yellow,fontFamily:'monospace'}}>
+            {(skuDraft.prefix||'')+String(parseInt(skuDraft.next)||1).padStart(parseInt(skuDraft.pad)||0,'0')}
+          </span>
+        </div>
+        <div style={{display:'flex',gap:10}}>
+          <Btn variant="ghost" onClick={()=>setShowSku(false)} T={T}>Cancel</Btn>
+          <Btn onClick={saveSkuSettings} T={T} style={{flex:1}}>Save SKU Settings</Btn>
+        </div>
+      </Modal>
+
+      {/* ── BARCODE SCAN MODAL ── */}
+      <Modal show={showScan} onClose={closeScan} title="Scan / Lookup Barcode" width={480} T={T}>
         <div style={{display:'flex',gap:10,marginBottom:16}}>
           <input
             autoFocus
@@ -714,119 +877,87 @@ function InventoryPage({inventory,setInventory,T,lookupBarcode}){
             onKeyDown={e=>{ if(e.key==='Enter') doLookup(); }}
             placeholder="Scan or type UPC / ISBN / EAN…"
             style={{flex:1,background:T.inputBg,border:`1.5px solid ${T.border}`,borderRadius:10,
-              color:T.text,padding:'11px 14px',fontSize:15,outline:'none',fontFamily:"'Inter',sans-serif"}}
-          />
-          <Btn onClick={doLookup} disabled={scanLoading||!scanCode.trim()} T={T}>
-            {scanLoading?'Searching…':'Look Up'}
-          </Btn>
+              color:T.text,padding:'11px 14px',fontSize:14,outline:'none',fontFamily:"'Inter',sans-serif"}}/>
+          <Btn onClick={doLookup} disabled={scanLoading} T={T}>{scanLoading?'…':'Look Up'}</Btn>
         </div>
-
         {scanLoading&&(
-          <div style={{display:'flex',alignItems:'center',gap:10,padding:'12px 0',color:T.muted,fontSize:13}}>
-            <Icon name="refresh" size={16} color={T.cyan} style={{animation:'spin 1s linear infinite'}}/>
-            Searching Open Food Facts, Open Library &amp; UPCitemdb…
+          <div style={{display:'flex',alignItems:'center',gap:10,padding:'8px 0',fontSize:13,color:T.muted}}>
+            <Icon name="refresh" size={15} color={T.cyan} style={{animation:'spin 1s linear infinite'}}/>
+            Searching product databases…
           </div>
         )}
-
         {scanError&&(
-          <div style={{background:T.danger+'14',border:`1px solid ${T.danger}28`,borderRadius:10,
-            padding:'12px 14px',fontSize:13,color:T.danger,marginBottom:12}}>
-            {scanError}
-          </div>
+          <div style={{background:T.danger+'12',border:`1px solid ${T.danger}28`,borderRadius:10,
+            padding:'12px 14px',fontSize:13,color:T.danger,marginBottom:8}}>{scanError}</div>
         )}
-
         {scanResult&&(
-          <div style={{background:T.success+'0D',border:`1px solid ${T.success}30`,borderRadius:14,padding:'16px 18px',marginBottom:12}}>
-            <div style={{fontSize:11,fontWeight:700,color:T.success,letterSpacing:.8,textTransform:'uppercase',marginBottom:10}}>
-              Product Found — {scanResult.source}
-            </div>
-            <div style={{display:'flex',gap:14,alignItems:'flex-start',marginBottom:14}}>
-              {scanResult.image&&(
-                <img src={scanResult.image} alt="" style={{width:64,height:64,objectFit:'contain',
-                  borderRadius:8,background:T.surface,flexShrink:0}}/>
-              )}
+          <div style={{background:T.surface,borderRadius:12,padding:16,marginBottom:8}}>
+            <div style={{display:'flex',gap:14}}>
+              {scanResult.image&&<img src={scanResult.image} alt="" style={{width:64,height:64,objectFit:'contain',borderRadius:8,flexShrink:0}}/>}
               <div style={{flex:1,minWidth:0}}>
-                <div style={{fontSize:15,fontWeight:700,color:T.text,marginBottom:4}}>{scanResult.title}</div>
-                {scanResult.brand&&<div style={{fontSize:13,color:T.muted}}>Brand: <b style={{color:T.text}}>{scanResult.brand}</b></div>}
-                {scanResult.category&&<div style={{fontSize:13,color:T.muted}}>Category: <b style={{color:T.text}}>{scanResult.category}</b></div>}
+                <div style={{fontSize:14,fontWeight:700,color:T.text,marginBottom:4}}>{scanResult.title||'Unknown product'}</div>
+                {scanResult.brand&&<div style={{fontSize:13,color:T.muted}}>Brand: {scanResult.brand}</div>}
+                {scanResult.category&&<div style={{fontSize:13,color:T.muted}}>Category: {scanResult.category}</div>}
+                <div style={{fontSize:11,color:T.subtleMuted,marginTop:4}}>via {scanResult.source}</div>
               </div>
             </div>
-            <Btn onClick={()=>openAddFromScan(scanResult)} T={T} style={{width:'100%'}}>
-              Use This Product → Fill Add Item Form
+            <Btn onClick={()=>openAddFromScan(scanResult)} T={T} style={{width:'100%',marginTop:14}}>
+              Use This → Add to Inventory
             </Btn>
           </div>
         )}
-
-        <div style={{paddingTop:12,borderTop:`1px solid ${T.border}`,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-          <span style={{fontSize:12,color:T.muted}}>Powered by Open Food Facts, Open Library &amp; UPCitemdb</span>
-          <Btn small variant="ghost" T={T} onClick={()=>{closeScan();setShowAdd(true);}}>Add Manually Instead</Btn>
+        <div style={{fontSize:12,color:T.subtleMuted,marginTop:8}}>
+          Tip: a USB barcode scanner types the code in automatically — just press Enter.
         </div>
       </Modal>
 
       {/* ── ADD ITEM MODAL ── */}
-      <Modal show={showAdd} onClose={()=>{setShowAdd(false);setNi(blankItem);}} title="Add Inventory Item" T={T}>
-        <Field label="Title *" value={ni.title} onChange={v=>setNi({...ni,title:v})} T={T}/>
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
-          <Field label="Category" value={ni.category} onChange={v=>setNi({...ni,category:v})} T={T}/>
-          <Field label="Brand" value={ni.brand} onChange={v=>setNi({...ni,brand:v})} T={T}/>
+      <Modal show={showAdd} onClose={()=>{setShowAdd(false);setNi(blankItem);}} title="Add Inventory Item" width={560} T={T}>
+        <div style={{background:BRAND.yellow+'14',border:`1px solid ${BRAND.yellow}40`,borderRadius:10,
+          padding:'10px 14px',marginBottom:16,fontSize:13,color:T.text,display:'flex',
+          alignItems:'center',justifyContent:'space-between'}}>
+          <span>This item will be assigned SKU:</span>
+          <span style={{fontWeight:800,fontFamily:'monospace',color:BRAND.yellow}}>{nextSku()}</span>
         </div>
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 80px',gap:12}}>
-          <Field label="Cost" value={ni.cost} onChange={v=>setNi({...ni,cost:v})} type="number" prefix="$" T={T}/>
-          <Field label="List Price" value={ni.price} onChange={v=>setNi({...ni,price:v})} type="number" prefix="$" T={T}/>
-          <Field label="Qty" value={ni.qty} onChange={v=>setNi({...ni,qty:v})} type="number" T={T}/>
-        </div>
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
-          <div style={{marginBottom:14}}>
-            <div style={{fontSize:12,fontWeight:600,color:T.muted,marginBottom:6}}>Condition</div>
-            <select value={ni.condition} onChange={e=>setNi({...ni,condition:e.target.value})}
-              style={{background:T.inputBg,border:`1.5px solid ${T.border}`,borderRadius:10,color:T.text,
-                padding:'10px 14px',fontSize:14,width:'100%',fontFamily:"'Inter',sans-serif",outline:'none'}}>
-              {['New','Like New','Very Good','Good','Fair','Poor'].map(c=><option key={c}>{c}</option>)}
-            </select>
-          </div>
-          <div style={{marginBottom:14}}>
-            <div style={{fontSize:12,fontWeight:600,color:T.muted,marginBottom:6}}>Status</div>
-            <select value={ni.status} onChange={e=>setNi({...ni,status:e.target.value})}
-              style={{background:T.inputBg,border:`1.5px solid ${T.border}`,borderRadius:10,color:T.text,
-                padding:'10px 14px',fontSize:14,width:'100%',fontFamily:"'Inter',sans-serif",outline:'none'}}>
-              {['Unlisted','Listed','Sold','Returned','Archived'].map(s=><option key={s}>{s}</option>)}
-            </select>
-          </div>
-        </div>
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
-          <div style={{marginBottom:14}}>
-            <div style={{fontSize:12,fontWeight:600,color:T.muted,marginBottom:6}}>Platform</div>
-            <select value={ni.platform} onChange={e=>setNi({...ni,platform:e.target.value})}
-              style={{background:T.inputBg,border:`1.5px solid ${T.border}`,borderRadius:10,color:T.text,
-                padding:'10px 14px',fontSize:14,width:'100%',fontFamily:"'Inter',sans-serif",outline:'none'}}>
-              {['-','eBay','Poshmark','Mercari','Etsy','FB Marketplace','Whatnot','Amazon','Depop'].map(p=><option key={p}>{p}</option>)}
-            </select>
-          </div>
-          <Field label="Storage Location" value={ni.location} onChange={v=>setNi({...ni,location:v})} T={T}/>
-        </div>
-        <Field label="Notes" value={ni.notes} onChange={v=>setNi({...ni,notes:v})} T={T}/>
-        {ni.cost&&ni.price&&(
-          <div style={{background:T.success+'12',border:`1px solid ${T.success}28`,borderRadius:10,
-            padding:'10px 14px',marginBottom:14,fontSize:13,color:T.success,fontWeight:600}}>
-            Estimated Profit: ${(parseFloat(ni.price||0)-parseFloat(ni.cost||0)).toFixed(2)} ·
-            ROI: {parseFloat(ni.cost)>0?Math.round(((parseFloat(ni.price)-parseFloat(ni.cost))/parseFloat(ni.cost))*100):0}%
-          </div>
-        )}
+        <ItemForm data={ni} set={setNi}/>
         <div style={{display:'flex',gap:10,marginTop:4}}>
           <Btn variant="ghost" onClick={()=>{setShowAdd(false);setNi(blankItem);}} T={T}>Cancel</Btn>
           <Btn onClick={addItem} T={T} style={{flex:1}}>Save Item</Btn>
         </div>
       </Modal>
 
+      {/* ── EDIT ITEM MODAL ── */}
+      {editItem&&(
+        <Modal show={!!editItem} onClose={()=>setEditItem(null)} title="Edit Inventory Item" width={560} T={T}>
+          <div style={{background:T.surface,borderRadius:10,padding:'10px 14px',marginBottom:16,
+            fontSize:13,color:T.muted,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+            <span>Editing SKU:</span>
+            <span style={{fontWeight:800,fontFamily:'monospace',color:BRAND.magenta}}>{editItem.sku||'(none)'}</span>
+          </div>
+          <Field label="SKU" value={editItem.sku||''} onChange={v=>setEditItem({...editItem,sku:v})} T={T}/>
+          <ItemForm data={editItem} set={setEditItem}/>
+          <div style={{display:'flex',gap:10,marginTop:4}}>
+            <Btn variant="danger" icon="trash" T={T} onClick={()=>{
+              if(window.confirm('Delete this item permanently?')){
+                setInventory(prev=>prev.filter(i=>i.id!==editItem.id));
+                setEditItem(null);
+              }
+            }}>Delete</Btn>
+            <Btn variant="ghost" onClick={()=>setEditItem(null)} T={T}>Cancel</Btn>
+            <Btn onClick={saveEdit} T={T} style={{flex:1}}>Save Changes</Btn>
+          </div>
+        </Modal>
+      )}
+
       {/* ── ITEM DETAIL MODAL ── */}
       {viewItem&&(
-        <Modal show={!!viewItem} onClose={()=>setViewItem(null)} title="Item Details" width={520} T={T}>
+        <Modal show={!!viewItem} onClose={()=>setViewItem(null)} title="Item Details" width={560} T={T}>
           <div style={{display:'flex',gap:16,marginBottom:20,alignItems:'center'}}>
             <div style={{width:56,height:56,borderRadius:14,background:T.surface,
               display:'flex',alignItems:'center',justifyContent:'center',fontSize:28,flexShrink:0}}>
               {catEmoji(viewItem.category)}
             </div>
-            <div>
+            <div style={{flex:1,minWidth:0}}>
               <div style={{fontSize:16,fontWeight:700,color:T.text,marginBottom:6}}>{viewItem.title}</div>
               <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
                 {viewItem.sku&&<Badge text={viewItem.sku} color={BRAND.magenta} T={T}/>}
@@ -845,10 +976,14 @@ function InventoryPage({inventory,setInventory,T,lookupBarcode}){
               ['Brand',viewItem.brand||'—'],
               ['Location',viewItem.location||'—'],
               ['Qty',viewItem.qty||1],
+              ['Item Number',viewItem.itemNumber||'—'],
+              ['UPC',viewItem.upc||'—'],
+              ['eBay Category',viewItem.ebayCategory||'—'],
+              ['Watchers',viewItem.watchers||'—'],
             ].map(([l,v])=>(
               <div key={l} style={{background:T.surface,borderRadius:10,padding:'10px 14px'}}>
                 <div style={{fontSize:11,color:T.muted,fontWeight:600,marginBottom:3,textTransform:'uppercase'}}>{l}</div>
-                <div style={{fontSize:14,fontWeight:700,color:T.text}}>{v}</div>
+                <div style={{fontSize:14,fontWeight:700,color:T.text,wordBreak:'break-word'}}>{v}</div>
               </div>
             ))}
           </div>
@@ -860,10 +995,11 @@ function InventoryPage({inventory,setInventory,T,lookupBarcode}){
           )}
           <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}>
             <Btn variant="ghost" small T={T} onClick={()=>setViewItem(null)}>Close</Btn>
+            <Btn icon="edit" small T={T} onClick={()=>startEdit(viewItem)}>Edit Item</Btn>
             <Btn variant="danger" small icon="trash" T={T} onClick={()=>{
               setInventory(prev=>prev.filter(i=>i.id!==viewItem.id));
               setViewItem(null);
-            }}>Delete Item</Btn>
+            }}>Delete</Btn>
           </div>
         </Modal>
       )}
@@ -1633,7 +1769,10 @@ function LabelsPage({inventory,T}){
 
 
 /* ── IMPORT / EXPORT PAGE ────────────────────────────────── */
-function ExportPage({inventory,expenses,mileage,setInventory,T}){
+function ExportPage({inventory,expenses,mileage,setInventory,biz,setBiz,T}){
+  const skuPrefixForImport=(biz&&biz.skuPrefix!==undefined)?biz.skuPrefix:'RRH-';
+  const skuNextForImport=(biz&&biz.skuNext!==undefined)?biz.skuNext:1;
+  const skuPadForImport=(biz&&biz.skuPad!==undefined)?biz.skuPad:4;
   const [tab,setTab]=useState('export');
   const [year,setYear]=useState(new Date().getFullYear().toString());
   const [exportDone,setExportDone]=useState('');
@@ -1663,11 +1802,17 @@ function ExportPage({inventory,expenses,mileage,setInventory,T}){
   function exportInventory(){
     downloadCSV([
       ['SKU','Title','Category','Brand','Condition','Qty','Cost','Price',
-       'Status','Platform','Location','Notes','Date Added'],
+       'Status','Platform','Location','Notes','Date Added',
+       'Item Number','Custom Label','Format','Currency','Start Price','Current Price',
+       'Watchers','Bids','Start Date','End Date','eBay Category','eBay Category #',
+       'eBay Product ID','Listing Site','UPC','EAN','ISBN'],
       ...inventory.map(i=>[
         i.sku||'',i.title||'',i.category||'',i.brand||'',i.condition||'',
         i.qty||1,parseFloat(i.cost||0).toFixed(2),parseFloat(i.price||0).toFixed(2),
-        i.status||'',i.platform||'',i.location||'',i.notes||'',i.dateAdded||''
+        i.status||'',i.platform||'',i.location||'',i.notes||'',i.dateAdded||'',
+        i.itemNumber||'',i.customSku||'',i.format||'',i.currency||'',i.startPrice||'',i.currentPrice||'',
+        i.watchers||'',i.bids||'',i.startDate||'',i.endDate||'',i.ebayCategory||'',i.ebayCategoryId||'',
+        i.ebayProductId||'',i.listingSite||'',i.upc||'',i.ean||'',i.isbn||''
       ])
     ],`rrh-inventory-${year}.csv`);
     setExportDone('Inventory exported — check your Downloads folder.');
@@ -1719,7 +1864,12 @@ function ExportPage({inventory,expenses,mileage,setInventory,T}){
     return lines.slice(1).map((line,i)=>{
       const vals=splitLine(line);
       const obj={};
-      headers.forEach((h,j)=>{obj[h]=(vals[j]||'').replace(/^"|"$/g,'').trim();});
+      headers.forEach((h,j)=>{
+        const val=(vals[j]||'').replace(/^"|"$/g,'').trim();
+        /* when two columns normalize to the same key (e.g. eBay category 1/2 name),
+           keep the first non-empty value instead of letting a later empty one clobber it */
+        if(!(h in obj)||(!obj[h]&&val))obj[h]=val;
+      });
       return obj;
     }).filter(r=>Object.values(r).some(v=>v));
   }
@@ -1783,24 +1933,55 @@ function ExportPage({inventory,expenses,mileage,setInventory,T}){
   function doImport(){
     if(!importRows||!importRows.length)return;
     if(importType==='inventory'&&setInventory){
-      const newItems=importRows.map((r,i)=>({
-        id:Date.now()+i,
-        sku:r.sku||r.stocknumber||('IMP-'+String(i+1).padStart(4,'0')),
-        title:r.title||r.name||r.item||'Untitled',
-        category:r.category||r.cat||'',
-        brand:r.brand||'',
-        condition:r.condition||r.cond||'Good',
-        qty:parseInt(r.qty||r.quantity||1)||1,
-        cost:parseFloat(r.cost||r.purchasecost||0)||0,
-        price:parseFloat(r.price||r.listprice||r.saleprice||0)||0,
-        status:r.status||'Unlisted',
-        platform:r.platform||'-',
-        location:r.location||r.storagelocation||'',
-        notes:r.notes||r.note||'',
-        dateAdded:r.dateadded||new Date().toISOString().slice(0,10),
-        daysListed:parseInt(r.dayslisted||0)||0,
-      }));
+      const newItems=importRows.map((r,i)=>{
+        /* eBay report columns normalize to: itemnumber, title, customlabelsku,
+           availablequantity, format, currency, startprice, currentprice,
+           watchers, bids, startdate, enddate, ebaycategoryname, ebaycategorynumber,
+           condition, ebayproductidepid, listingsite, pupc, pean, pisbn */
+        const price=parseFloat(r.price||r.listprice||r.saleprice||r.currentprice||r.startprice||0)||0;
+        const ebayCat=r.category||r.cat||r.ebaycategoryname||r.ebaycategoryname1||'';
+        const platform=r.platform||(r.itemnumber||r.listingsite?'eBay':'-');
+        return{
+          id:Date.now()+i,
+          sku:r.sku||r.stocknumber||r.customlabelsku||(skuPrefixForImport+String((skuNextForImport+i)).padStart(skuPadForImport,'0')),
+          title:r.title||r.name||r.item||'Untitled',
+          category:ebayCat,
+          brand:r.brand||'',
+          condition:r.condition||r.cond||'Good',
+          qty:parseInt(r.qty||r.quantity||r.availablequantity||1)||1,
+          cost:parseFloat(r.cost||r.purchasecost||0)||0,
+          price:price,
+          status:r.status||(r.itemnumber?'Listed':'Unlisted'),
+          platform:platform,
+          location:r.location||r.storagelocation||'',
+          notes:r.notes||r.note||r.variationdetails||'',
+          dateAdded:r.dateadded||new Date().toISOString().slice(0,10),
+          daysListed:parseInt(r.dayslisted||0)||0,
+          itemNumber:r.itemnumber||'',
+          customSku:r.customlabelsku||'',
+          format:r.format||'FIXED_PRICE',
+          currency:r.currency||'USD',
+          startPrice:r.startprice||'',
+          currentPrice:r.currentprice||'',
+          watchers:r.watchers||'',
+          bids:r.bids||'',
+          startDate:r.startdate||'',
+          endDate:r.enddate||'',
+          ebayCategory:r.ebaycategoryname||r.ebaycategoryname1||'',
+          ebayCategoryId:r.ebaycategorynumber||r.ebaycategorynumber1||'',
+          ebayProductId:r.ebayproductidepid||r.epid||'',
+          listingSite:r.listingsite||'US',
+          upc:r.pupc||r.upc||'',
+          ean:r.pean||r.ean||'',
+          isbn:r.pisbn||r.isbn||'',
+        };
+      });
       setInventory(prev=>[...prev,...newItems]);
+      /* advance SKU counter if we auto-generated any */
+      if(setBiz){
+        const autoCount=importRows.filter(r=>!(r.sku||r.stocknumber||r.customlabelsku)).length;
+        if(autoCount>0)setBiz(prev=>({...prev,skuNext:(prev.skuNext||1)+autoCount}));
+      }
       setImportMsg('✅ Imported '+newItems.length+' items into your inventory!');
       setImportRows(null);
       setTimeout(()=>setImportMsg(''),5000);
@@ -2513,7 +2694,7 @@ function SettingsPage({biz,setBiz,dark,setDark,T}){
                     rel="noopener noreferrer" style={{textDecoration:'none'}}>
                     <Btn small icon="globe" variant="ghost" T={T}>retroreplayhub.com</Btn>
                   </a>
-                  <a href="https://github.com/retroreplayhub/reseller-os" target="_blank"
+                  <a href="https://github.com/DaPandulce/Reseller-Central" target="_blank"
                     rel="noopener noreferrer" style={{textDecoration:'none'}}>
                     <Btn small icon="github" variant="ghost" T={T}>View on GitHub</Btn>
                   </a>
@@ -2758,7 +2939,7 @@ function App(){
   const [expenses,setExpensesState]=useState([]);
   const [mileage,setMileageState]=useState([]);
   const [goals,setGoalsState]=useState([]);
-  const BIZ_DEFAULT={name:'Retro Replay Hub',tagline:'Games • Movies • Music • Fashion',ownerName:'',email:'',phone:'',address:'',city:'',state:'',zip:'',country:'US',website:'',taxId:'',logo:null,currency:'USD',mileageRate:0.59,timezone:'America/New_York'};
+  const BIZ_DEFAULT={name:'Retro Replay Hub',tagline:'Games • Movies • Music • Fashion',ownerName:'',email:'',phone:'',address:'',city:'',state:'',zip:'',country:'US',website:'',taxId:'',logo:null,currency:'USD',mileageRate:0.59,timezone:'America/New_York',skuPrefix:'RRH-',skuNext:1,skuPad:4};
   const [biz,setBizState]=useState(BIZ_DEFAULT);
 
   /* ── Bootstrap: load everything from IndexedDB on first mount ── */
@@ -2847,7 +3028,7 @@ function App(){
 
   const PAGES={
     home:<HomePage inventory={inventory} expenses={expenses} mileage={mileage} goals={goals} T={T} onNav={setPage}/>,
-    inventory:<InventoryPage inventory={inventory} setInventory={setInventory} T={T} lookupBarcode={lookupBarcode}/>,
+    inventory:<InventoryPage inventory={inventory} setInventory={setInventory} biz={biz} setBiz={setBiz} T={T} lookupBarcode={lookupBarcode}/>,
     profit:<ProfitPage T={T}/>,
     expenses:<ExpensesPage expenses={expenses} setExpenses={setExpenses} T={T}/>,
     mileage:<MileagePage mileage={mileage} setMileage={setMileage} T={T}/>,
@@ -2855,7 +3036,7 @@ function App(){
     goals:<GoalsPage goals={goals} setGoals={setGoals} T={T}/>,
     storage:<StoragePage inventory={inventory} T={T}/>,
     labels:<LabelsPage inventory={inventory} T={T}/>,
-    export:<ExportPage inventory={inventory} setInventory={setInventory} expenses={expenses} mileage={mileage} T={T}/>,
+    export:<ExportPage inventory={inventory} setInventory={setInventory} expenses={expenses} mileage={mileage} biz={biz} setBiz={setBiz} T={T}/>,
     settings:<SettingsPage biz={biz} setBiz={setBiz} dark={darkState} setDark={setDark} T={T}/>,
   };
 
@@ -2897,7 +3078,7 @@ function App(){
             {' '}· Free reseller tool · No support SLA · Updates released as available
           </div>
           <div style={{display:'flex',alignItems:'center',gap:12,flexShrink:0}}>
-            <a href="https://github.com/retroreplayhub/reseller-os" target="_blank" rel="noopener noreferrer" style={{display:'flex',alignItems:'center',gap:5,fontSize:11,color:T.muted,textDecoration:'none'}}>
+            <a href="https://github.com/DaPandulce/Reseller-Central" target="_blank" rel="noopener noreferrer" style={{display:'flex',alignItems:'center',gap:5,fontSize:11,color:T.muted,textDecoration:'none'}}>
               <Icon name="github" size={13} color={T.muted}/>GitHub
             </a>
             <span style={{fontSize:11,color:T.muted,cursor:'pointer'}} onClick={()=>setPage('settings')}>v1.0.0</span>
