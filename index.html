@@ -21,6 +21,10 @@ input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none}
 input:-webkit-autofill{transition:background-color 9999s ease-in-out 0s}
 button{font-family:'Inter',sans-serif}
 input,select{font-family:'Inter',sans-serif}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+@keyframes loadBar{from{width:15%}to{width:85%}}
+.pe{animation:fadeIn .18s ease}
 </style>
 </head>
 <body>
@@ -315,6 +319,7 @@ const NAV_ITEMS=[
   {id:'storage',label:'Storage',icon:'warehouse'},
   {id:'labels',label:'Labels',icon:'label'},
   {id:'export',label:'Import / Export',icon:'layers'},
+  {id:'settings',label:'Settings',icon:'settings'},
 ];
 
 function Sidebar({active,onNav,col,setCol,T,dark,setDark,biz}){
@@ -430,11 +435,18 @@ function HomePage({inventory,expenses,mileage,goals,T,onNav}){
 
       {/* Quick actions */}
       <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10,marginBottom:16}}>
-        {[['camera','AI Scan',T.cyan],['scan','Barcode',T.warning],['import','Import',T.success],['receipt','Expense',BRAND.yellow]].map(([ic,lb,col])=>(
-          <button key={lb} style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:'14px 8px',
-            cursor:'pointer',color:T.text,fontSize:13,fontWeight:600,display:'flex',flexDirection:'column',
-            alignItems:'center',gap:8,boxShadow:`0 1px 4px ${T.shadow}`,transition:'all 0.15s',
-            fontFamily:"'Inter',sans-serif"}}>
+        {[
+          ['camera','AI Scan',T.cyan,()=>onNav('inventory')],
+          ['scan','Barcode',T.warning,()=>onNav('inventory')],
+          ['import','Import',T.success,()=>onNav('export')],
+          ['receipt','Expense',BRAND.yellow,()=>onNav('expenses')],
+        ].map(([ic,lb,col,action])=>(
+          <button key={lb} onClick={action} style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,
+            padding:'14px 8px',cursor:'pointer',color:T.text,fontSize:13,fontWeight:600,display:'flex',
+            flexDirection:'column',alignItems:'center',gap:8,boxShadow:`0 1px 4px ${T.shadow}`,
+            transition:'all 0.15s',fontFamily:"'Inter',sans-serif"}}
+            onMouseEnter={e=>e.currentTarget.style.transform='translateY(-1px)'}
+            onMouseLeave={e=>e.currentTarget.style.transform='translateY(0)'}>
             <div style={{width:36,height:36,borderRadius:10,background:col+'18',display:'flex',alignItems:'center',justifyContent:'center'}}>
               <Icon name={ic} size={18} color={col}/>
             </div>
@@ -516,299 +528,375 @@ function HomePage({inventory,expenses,mileage,goals,T,onNav}){
 
 /* ── INVENTORY ──────────────────────────────────────────────── */
 function InventoryPage({inventory,setInventory,T,lookupBarcode}){
-  const [filter,setFilter]=useState('All');
+  const [filterStatus,setFilterStatus]=useState('All');
   const [search,setSearch]=useState('');
   const [showAdd,setShowAdd]=useState(false);
   const [showScan,setShowScan]=useState(false);
+  const [viewItem,setViewItem]=useState(null);
+
+  /* Scan / barcode state */
   const [scanCode,setScanCode]=useState('');
   const [scanResult,setScanResult]=useState(null);
   const [scanLoading,setScanLoading]=useState(false);
   const [scanError,setScanError]=useState('');
 
-  async function doLookup(code){
-    if(!code.trim())return;
+  async function doLookup(){
+    const code=scanCode.trim();
+    if(!code)return;
     setScanLoading(true);setScanError('');setScanResult(null);
-    const r=await lookupBarcode(code.trim());
+    try{
+      const r=await lookupBarcode(code);
+      if(r){setScanResult(r);}
+      else{setScanError('Product not found in any database. Try adding manually.');}
+    }catch(e){
+      setScanError('Lookup failed — check your internet connection.');
+    }
     setScanLoading(false);
-    if(r){setScanResult(r);}
-    else{setScanError('Product not found. Try a different barcode or add manually.');}
   }
-  function applyScanToForm(r){
-    setNi(prev=>({...prev,title:r.title||prev.title,category:r.category||prev.category,brand:r.brand||prev.brand}));
-    setScanCode('');setScanResult(null);setScanError('');setShowScan(false);setShowAdd(true);
+
+  function closeScan(){
+    setShowScan(false);setScanCode('');setScanResult(null);setScanError('');
   }
-  const blank={title:'',category:'',brand:'',cost:'',price:'',qty:'1',condition:'Good',status:'Unlisted',platform:'-',location:''};
-  const [ni,setNi]=useState(blank);
-  const statuses=['All','Unlisted','Listed','Sold','Returned'];
-  const filtered=inventory.filter(i=>(filter==='All'||i.status===filter)&&(!search||i.title.toLowerCase().includes(search.toLowerCase())||i.sku.toLowerCase().includes(search.toLowerCase())));
+
+  const blankItem={title:'',category:'',brand:'',condition:'Good',qty:'1',
+    cost:'',price:'',status:'Unlisted',platform:'-',location:'',notes:''};
+  const [ni,setNi]=useState(blankItem);
+
+  function openAddFromScan(r){
+    setNi(prev=>({...prev, title:r.title||'', brand:r.brand||'', category:r.category||''}));
+    closeScan();
+    setShowAdd(true);
+  }
 
   function addItem(){
-    const id=inventory.length+1;
-    setInventory([...inventory,{...ni,id,sku:`RC-${String(id).padStart(3,'0')}`,cost:parseFloat(ni.cost)||0,price:parseFloat(ni.price)||0,qty:parseInt(ni.qty)||1,daysListed:0}]);
-    setNi(blank);setShowAdd(false);
+    if(!ni.title.trim())return;
+    const id=Date.now();
+    const sku='RRH-'+String(inventory.length+1).padStart(4,'0');
+    const item={...ni,id,sku,
+      qty:parseInt(ni.qty)||1,
+      cost:parseFloat(ni.cost)||0,
+      price:parseFloat(ni.price)||0,
+      daysListed:0,
+      dateAdded:new Date().toISOString().slice(0,10)
+    };
+    setInventory(prev=>[...prev,item]);
+    setNi(blankItem);
+    setShowAdd(false);
   }
 
+  const statuses=['All','Unlisted','Listed','Sold','Returned','Archived'];
   const statusColor={Listed:T.cyan,Sold:T.success,Unlisted:T.warning,Returned:T.danger,Archived:T.muted};
+  const catEmoji=c=>c==='Video Games'?'🎮':c==='Electronics'?'📱':c==='Clothing'?'👕':c==='Books'?'📚':'📦';
+
+  const filtered=inventory.filter(i=>{
+    const matchStatus=filterStatus==='All'||i.status===filterStatus;
+    const q=search.toLowerCase();
+    const matchSearch=!q||(i.title||'').toLowerCase().includes(q)||(i.sku||'').toLowerCase().includes(q)||(i.brand||'').toLowerCase().includes(q);
+    return matchStatus&&matchSearch;
+  });
+
+  const invValue=inventory.reduce((s,i)=>s+(parseFloat(i.cost)||0),0);
+  const potProfit=inventory.reduce((s,i)=>s+(parseFloat(i.price)||0)-(parseFloat(i.cost)||0),0);
 
   return(
     <div style={{padding:'24px 28px',overflowY:'auto',flex:1}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
         <div style={{fontSize:26,fontWeight:800,color:T.text,letterSpacing:-0.5}}>Inventory</div>
-        <Btn onClick={()=>setShowScan(true)} icon="scan" v="ghost" T={T}>Scan Barcode</Btn>
+        <div style={{display:'flex',gap:8}}>
+          <Btn onClick={()=>setShowScan(true)} icon="scan" variant="ghost" T={T}>Scan Barcode</Btn>
           <Btn onClick={()=>setShowAdd(true)} icon="plus" T={T}>Add Item</Btn>
+        </div>
       </div>
 
-      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(110px,1fr))',gap:10,marginBottom:18}}>
-        <StatCard label="Total Items" value={inventory.length} accent={T.cyan} icon="box" T={T}/>
+      {/* Stats */}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(110px,1fr))',gap:10,marginBottom:16}}>
+        <StatCard label="Total" value={inventory.length} accent={T.cyan} icon="box" T={T}/>
         <StatCard label="Listed" value={inventory.filter(i=>i.status==='Listed').length} accent={BRAND.yellow} icon="tag" T={T}/>
         <StatCard label="Sold" value={inventory.filter(i=>i.status==='Sold').length} accent={T.success} icon="check" T={T}/>
-        <StatCard label="Inv. Value" value={`$${inventory.reduce((s,i)=>s+i.cost,0).toFixed(0)}`} accent={BRAND.magenta} icon="dollar" T={T}/>
+        <StatCard label="Unlisted" value={inventory.filter(i=>i.status==='Unlisted').length} accent={T.warning} icon="alert" T={T}/>
+        <StatCard label="Value" value={`$${invValue.toFixed(0)}`} accent={BRAND.magenta} icon="dollar" T={T}/>
+        <StatCard label="Pot. Profit" value={`$${potProfit.toFixed(0)}`} accent={T.success} icon="trendUp" T={T}/>
       </div>
 
-      {/* Search + filters */}
-      <div style={{display:'flex',gap:10,marginBottom:14,flexWrap:'wrap'}}>
+      {/* Search + filter */}
+      <div style={{display:'flex',gap:10,marginBottom:14,flexWrap:'wrap',alignItems:'center'}}>
         <div style={{flex:1,minWidth:200,display:'flex',alignItems:'center',background:T.inputBg,
           border:`1.5px solid ${T.border}`,borderRadius:12,padding:'0 14px',gap:8}}>
-          <Icon name="search" size={16} color={T.muted}/>
-          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search inventory…"
-            style={{background:'transparent',border:'none',outline:'none',color:T.text,padding:'10px 0',fontSize:14,width:'100%',fontFamily:"'Inter',sans-serif"}}/>
+          <Icon name="search" size={15} color={T.muted}/>
+          <input value={search} onChange={e=>setSearch(e.target.value)}
+            placeholder="Search title, brand, SKU…"
+            style={{background:'transparent',border:'none',outline:'none',color:T.text,
+              padding:'10px 0',fontSize:14,width:'100%',fontFamily:"'Inter',sans-serif"}}/>
+          {search&&<button onClick={()=>setSearch('')} style={{background:'none',border:'none',
+            cursor:'pointer',padding:2,lineHeight:0}}>
+            <Icon name="x" size={14} color={T.muted}/>
+          </button>}
         </div>
         <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
           {statuses.map(s=>(
-            <button key={s} onClick={()=>setFilter(s)} style={{background:filter===s?BRAND.yellow:T.surface,
-              color:filter===s?'#111':T.muted,border:`1px solid ${filter===s?BRAND.yellow:T.border}`,
-              borderRadius:20,padding:'7px 14px',fontSize:13,fontWeight:600,cursor:'pointer',
-              fontFamily:"'Inter',sans-serif",transition:'all 0.15s'}}>{s}</button>
+            <button key={s} onClick={()=>setFilterStatus(s)} style={{
+              background:filterStatus===s?BRAND.yellow:T.surface,
+              color:filterStatus===s?'#111':T.muted,
+              border:`1px solid ${filterStatus===s?BRAND.yellow:T.border}`,
+              borderRadius:20,padding:'7px 14px',fontSize:13,fontWeight:600,
+              cursor:'pointer',fontFamily:"'Inter',sans-serif",transition:'all .14s'
+            }}>{s}</button>
           ))}
         </div>
       </div>
 
+      {/* Item list */}
       <div style={{display:'flex',flexDirection:'column',gap:8}}>
+        {filtered.length===0&&(
+          <div style={{textAlign:'center',padding:'56px 24px',color:T.muted}}>
+            <Icon name="box" size={48} color={T.muted} style={{opacity:.3}}/>
+            <div style={{fontSize:15,fontWeight:700,color:T.text,marginTop:14}}>
+              {inventory.length===0?'No inventory yet':'No items match your search'}
+            </div>
+            <div style={{fontSize:13,marginTop:4,marginBottom:20}}>
+              {inventory.length===0?'Add your first item or scan a barcode to get started':'Try a different filter or search term'}
+            </div>
+            {inventory.length===0&&(
+              <div style={{display:'flex',gap:10,justifyContent:'center'}}>
+                <Btn onClick={()=>setShowScan(true)} icon="scan" variant="ghost" T={T}>Scan Barcode</Btn>
+                <Btn onClick={()=>setShowAdd(true)} icon="plus" T={T}>Add Manually</Btn>
+              </div>
+            )}
+          </div>
+        )}
         {filtered.map(item=>(
-          <div key={item.id} style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,
-            padding:'14px 18px',display:'flex',alignItems:'center',gap:14,
-            boxShadow:`0 1px 3px ${T.shadow}`,transition:'border-color 0.15s'}}>
-            <div style={{width:44,height:44,borderRadius:12,background:T.surface,display:'flex',
-              alignItems:'center',justifyContent:'center',fontSize:22,flexShrink:0}}>
-              {item.category==='Video Games'?'🎮':item.category==='Electronics'?'📱':item.category==='Clothing'?'👕':'📦'}
+          <div key={item.id} onClick={()=>setViewItem(item)}
+            style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,
+              padding:'13px 17px',display:'flex',alignItems:'center',gap:14,
+              boxShadow:`0 1px 3px ${T.shadow}`,cursor:'pointer',transition:'border-color .14s'}}
+            onMouseEnter={e=>e.currentTarget.style.borderColor=BRAND.yellow+'60'}
+            onMouseLeave={e=>e.currentTarget.style.borderColor=T.border}>
+            <div style={{width:44,height:44,borderRadius:12,background:T.surface,
+              display:'flex',alignItems:'center',justifyContent:'center',fontSize:22,flexShrink:0}}>
+              {catEmoji(item.category)}
             </div>
             <div style={{flex:1,minWidth:0}}>
-              <div style={{fontSize:14,fontWeight:600,color:T.text,marginBottom:5,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{item.title}</div>
-              <div style={{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap'}}>
-                <span style={{fontSize:12,color:T.muted}}>{item.category}</span>
-                <Badge text={item.sku} color={BRAND.magenta} T={T}/>
-                {item.platform!=='-'&&<Badge text={item.platform} color={T.cyan} T={T}/>}
-                {item.daysListed>30&&<Badge text={`${item.daysListed}d aging`} color={T.danger} T={T}/>}
+              <div style={{fontSize:14,fontWeight:600,color:T.text,overflow:'hidden',
+                textOverflow:'ellipsis',whiteSpace:'nowrap',marginBottom:4}}>{item.title}</div>
+              <div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}}>
+                {item.sku&&<Badge text={item.sku} color={BRAND.magenta} T={T}/>}
+                {item.category&&<span style={{fontSize:12,color:T.muted}}>{item.category}</span>}
+                {item.platform&&item.platform!=='-'&&<Badge text={item.platform} color={T.cyan} T={T}/>}
+                {item.location&&<span style={{fontSize:11,color:T.muted,display:'flex',alignItems:'center',gap:3}}>
+                  <Icon name="mappin" size={11} color={T.muted}/>{item.location}
+                </span>}
+                {(item.daysListed||0)>30&&<Badge text={`${item.daysListed}d aging`} color={T.danger} T={T}/>}
               </div>
             </div>
             <div style={{textAlign:'right',flexShrink:0}}>
-              <div style={{fontSize:16,fontWeight:800,color:T.text}}>${item.price}</div>
-              <div style={{fontSize:11,color:T.muted,margin:'2px 0 5px'}}>cost ${item.cost}</div>
-              <Badge text={item.status} color={statusColor[item.status]||T.muted} T={T}/>
+              <div style={{fontSize:16,fontWeight:800,color:T.text}}>${(parseFloat(item.price)||0).toFixed(2)}</div>
+              <div style={{fontSize:11,color:T.muted,margin:'2px 0 5px'}}>
+                cost ${(parseFloat(item.cost)||0).toFixed(2)}
+                {item.cost&&item.price?' · ROI '+(item.cost>0?Math.round(((item.price-item.cost)/item.cost)*100):0)+'%':''}
+              </div>
+              <Badge text={item.status||'Unlisted'} color={statusColor[item.status]||T.muted} T={T}/>
             </div>
           </div>
         ))}
-        {filtered.length===0&&(
-          <div style={{textAlign:'center',padding:60,color:T.muted}}>
-            <Icon name="box" size={48} color={T.subtleMuted}/>
-            <div style={{marginTop:14,fontSize:15,fontWeight:600}}>No items found</div>
-            <div style={{fontSize:13,marginTop:4}}>Add your first inventory item!</div>
-          </div>
-        )}
       </div>
 
-
       {/* ── BARCODE SCAN MODAL ── */}
-      {showScan&&(
-        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.65)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:500,backdropFilter:'blur(4px)'}} onClick={()=>{setShowScan(false);setScanCode('');setScanResult(null);setScanError('');}}>
-          <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:22,padding:28,width:480,boxShadow:'0 24px 64px rgba(0,0,0,.4)'}} onClick={e=>e.stopPropagation()}>
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
-              <div style={{fontSize:17,fontWeight:700,color:T.text}}>Scan / Lookup Barcode</div>
-              <button onClick={()=>{setShowScan(false);setScanCode('');setScanResult(null);setScanError('');}} style={{background:T.surface,border:'none',borderRadius:9,padding:7,cursor:'pointer',lineHeight:0}}><Icon name="x" size={15} color={T.muted}/></button>
-            </div>
-            <div style={{background:T.surface,borderRadius:12,padding:'14px 16px',marginBottom:16,fontSize:13,color:T.muted}}>
-              <b style={{color:T.text}}>How to scan:</b> Use a USB or Bluetooth barcode scanner — it types the barcode directly into the field below. Or manually enter a UPC, ISBN, or EAN code.
-            </div>
-            <div style={{display:'flex',gap:10,marginBottom:16}}>
-              <input
-                autoFocus
-                value={scanCode}
-                onChange={e=>setScanCode(e.target.value)}
-                onKeyDown={e=>{if(e.key==='Enter')doLookup(scanCode);}}
-                placeholder="Scan or type UPC / ISBN / EAN…"
-                style={{flex:1,background:T.inputBg,border:`1.5px solid ${T.border}`,borderRadius:10,color:T.text,padding:'11px 14px',fontSize:15,outline:'none',fontFamily:"'Inter',sans-serif"}}
-              />
-              <Btn T={T} onClick={()=>doLookup(scanCode)} dis={scanLoading||!scanCode.trim()}>
-                {scanLoading?'Looking up…':'Lookup'}
-              </Btn>
-            </div>
-            {scanLoading&&(
-              <div style={{display:'flex',alignItems:'center',gap:10,padding:'14px 0',color:T.muted,fontSize:13}}>
-                <Icon name="refresh" size={16} color={T.cyan} style={{animation:'spin 1s linear infinite'}}/>
-                Searching product databases…
-              </div>
-            )}
-            {scanError&&(
-              <div style={{background:T.danger+'14',border:`1px solid ${T.danger}28`,borderRadius:10,padding:'12px 14px',fontSize:13,color:T.danger,marginBottom:12}}>
-                {scanError}
-              </div>
-            )}
-            {scanResult&&(
-              <div style={{background:T.success+'10',border:`1px solid ${T.success}28`,borderRadius:14,padding:'16px 18px',marginBottom:12}}>
-                <div style={{display:'flex',gap:14,alignItems:'flex-start'}}>
-                  {scanResult.image&&<img src={scanResult.image} alt="" style={{width:60,height:60,objectFit:'contain',borderRadius:8,background:T.surface,flexShrink:0}}/>}
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontSize:15,fontWeight:700,color:T.text,marginBottom:4}}>{scanResult.title}</div>
-                    {scanResult.brand&&<div style={{fontSize:13,color:T.muted,marginBottom:2}}>Brand: {scanResult.brand}</div>}
-                    {scanResult.category&&<div style={{fontSize:13,color:T.muted,marginBottom:2}}>Category: {scanResult.category}</div>}
-                    <div style={{fontSize:11,color:T.faint||T.muted,marginTop:4}}>Source: {scanResult.source}</div>
-                  </div>
-                </div>
-                <div style={{marginTop:14,display:'flex',gap:10}}>
-                  <Btn T={T} full onClick={()=>applyScanToForm(scanResult)}>
-                    Use This Product → Add to Inventory
-                  </Btn>
-                </div>
-              </div>
-            )}
-            <div style={{marginTop:8,paddingTop:12,borderTop:`1px solid ${T.border}`,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-              <span style={{fontSize:12,color:T.muted}}>Powered by Open Food Facts, Open Library &amp; UPCitemdb</span>
-              <Btn sm v="ghost" T={T} onClick={()=>{setShowScan(false);setShowAdd(true);}}>Add Manually</Btn>
-            </div>
-          </div>
+      <Modal show={showScan} onClose={closeScan} title="Scan / Lookup Barcode" width={500} T={T}>
+        <div style={{background:T.surface,borderRadius:12,padding:'12px 16px',marginBottom:16,fontSize:13,color:T.muted}}>
+          <b style={{color:T.text}}>How to use:</b> Plug in a USB/Bluetooth barcode scanner and scan any item — 
+          it will type the code below automatically. Or type a UPC, EAN, or ISBN manually.
         </div>
-      )}
+        <div style={{display:'flex',gap:10,marginBottom:16}}>
+          <input
+            autoFocus
+            value={scanCode}
+            onChange={e=>setScanCode(e.target.value)}
+            onKeyDown={e=>{ if(e.key==='Enter') doLookup(); }}
+            placeholder="Scan or type UPC / ISBN / EAN…"
+            style={{flex:1,background:T.inputBg,border:`1.5px solid ${T.border}`,borderRadius:10,
+              color:T.text,padding:'11px 14px',fontSize:15,outline:'none',fontFamily:"'Inter',sans-serif"}}
+          />
+          <Btn onClick={doLookup} disabled={scanLoading||!scanCode.trim()} T={T}>
+            {scanLoading?'Searching…':'Look Up'}
+          </Btn>
+        </div>
 
-      <Modal show={showAdd} onClose={()=>setShowAdd(false)} title="Add New Item" T={T}>
-        <Field label="Title" value={ni.title} onChange={v=>setNi({...ni,title:v})} T={T}/>
+        {scanLoading&&(
+          <div style={{display:'flex',alignItems:'center',gap:10,padding:'12px 0',color:T.muted,fontSize:13}}>
+            <Icon name="refresh" size={16} color={T.cyan} style={{animation:'spin 1s linear infinite'}}/>
+            Searching Open Food Facts, Open Library &amp; UPCitemdb…
+          </div>
+        )}
+
+        {scanError&&(
+          <div style={{background:T.danger+'14',border:`1px solid ${T.danger}28`,borderRadius:10,
+            padding:'12px 14px',fontSize:13,color:T.danger,marginBottom:12}}>
+            {scanError}
+          </div>
+        )}
+
+        {scanResult&&(
+          <div style={{background:T.success+'0D',border:`1px solid ${T.success}30`,borderRadius:14,padding:'16px 18px',marginBottom:12}}>
+            <div style={{fontSize:11,fontWeight:700,color:T.success,letterSpacing:.8,textTransform:'uppercase',marginBottom:10}}>
+              Product Found — {scanResult.source}
+            </div>
+            <div style={{display:'flex',gap:14,alignItems:'flex-start',marginBottom:14}}>
+              {scanResult.image&&(
+                <img src={scanResult.image} alt="" style={{width:64,height:64,objectFit:'contain',
+                  borderRadius:8,background:T.surface,flexShrink:0}}/>
+              )}
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:15,fontWeight:700,color:T.text,marginBottom:4}}>{scanResult.title}</div>
+                {scanResult.brand&&<div style={{fontSize:13,color:T.muted}}>Brand: <b style={{color:T.text}}>{scanResult.brand}</b></div>}
+                {scanResult.category&&<div style={{fontSize:13,color:T.muted}}>Category: <b style={{color:T.text}}>{scanResult.category}</b></div>}
+              </div>
+            </div>
+            <Btn onClick={()=>openAddFromScan(scanResult)} T={T} style={{width:'100%'}}>
+              Use This Product → Fill Add Item Form
+            </Btn>
+          </div>
+        )}
+
+        <div style={{paddingTop:12,borderTop:`1px solid ${T.border}`,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+          <span style={{fontSize:12,color:T.muted}}>Powered by Open Food Facts, Open Library &amp; UPCitemdb</span>
+          <Btn small variant="ghost" T={T} onClick={()=>{closeScan();setShowAdd(true);}}>Add Manually Instead</Btn>
+        </div>
+      </Modal>
+
+      {/* ── ADD ITEM MODAL ── */}
+      <Modal show={showAdd} onClose={()=>{setShowAdd(false);setNi(blankItem);}} title="Add Inventory Item" T={T}>
+        <Field label="Title *" value={ni.title} onChange={v=>setNi({...ni,title:v})} T={T}/>
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
           <Field label="Category" value={ni.category} onChange={v=>setNi({...ni,category:v})} T={T}/>
           <Field label="Brand" value={ni.brand} onChange={v=>setNi({...ni,brand:v})} T={T}/>
         </div>
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 80px',gap:12}}>
           <Field label="Cost" value={ni.cost} onChange={v=>setNi({...ni,cost:v})} type="number" prefix="$" T={T}/>
-          <Field label="Price" value={ni.price} onChange={v=>setNi({...ni,price:v})} type="number" prefix="$" T={T}/>
+          <Field label="List Price" value={ni.price} onChange={v=>setNi({...ni,price:v})} type="number" prefix="$" T={T}/>
           <Field label="Qty" value={ni.qty} onChange={v=>setNi({...ni,qty:v})} type="number" T={T}/>
         </div>
-        <Field label="Storage Location" value={ni.location} onChange={v=>setNi({...ni,location:v})} T={T}/>
-        <div style={{display:'flex',gap:10,marginTop:6}}>
-          <Btn variant="ghost" onClick={()=>setShowAdd(false)} T={T}>Cancel</Btn>
-          <Btn onClick={addItem} T={T}>Save Item</Btn>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+          <div style={{marginBottom:14}}>
+            <div style={{fontSize:12,fontWeight:600,color:T.muted,marginBottom:6}}>Condition</div>
+            <select value={ni.condition} onChange={e=>setNi({...ni,condition:e.target.value})}
+              style={{background:T.inputBg,border:`1.5px solid ${T.border}`,borderRadius:10,color:T.text,
+                padding:'10px 14px',fontSize:14,width:'100%',fontFamily:"'Inter',sans-serif",outline:'none'}}>
+              {['New','Like New','Very Good','Good','Fair','Poor'].map(c=><option key={c}>{c}</option>)}
+            </select>
+          </div>
+          <div style={{marginBottom:14}}>
+            <div style={{fontSize:12,fontWeight:600,color:T.muted,marginBottom:6}}>Status</div>
+            <select value={ni.status} onChange={e=>setNi({...ni,status:e.target.value})}
+              style={{background:T.inputBg,border:`1.5px solid ${T.border}`,borderRadius:10,color:T.text,
+                padding:'10px 14px',fontSize:14,width:'100%',fontFamily:"'Inter',sans-serif",outline:'none'}}>
+              {['Unlisted','Listed','Sold','Returned','Archived'].map(s=><option key={s}>{s}</option>)}
+            </select>
+          </div>
+        </div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+          <div style={{marginBottom:14}}>
+            <div style={{fontSize:12,fontWeight:600,color:T.muted,marginBottom:6}}>Platform</div>
+            <select value={ni.platform} onChange={e=>setNi({...ni,platform:e.target.value})}
+              style={{background:T.inputBg,border:`1.5px solid ${T.border}`,borderRadius:10,color:T.text,
+                padding:'10px 14px',fontSize:14,width:'100%',fontFamily:"'Inter',sans-serif",outline:'none'}}>
+              {['-','eBay','Poshmark','Mercari','Etsy','FB Marketplace','Whatnot','Amazon','Depop'].map(p=><option key={p}>{p}</option>)}
+            </select>
+          </div>
+          <Field label="Storage Location" value={ni.location} onChange={v=>setNi({...ni,location:v})} T={T}/>
+        </div>
+        <Field label="Notes" value={ni.notes} onChange={v=>setNi({...ni,notes:v})} T={T}/>
+        {ni.cost&&ni.price&&(
+          <div style={{background:T.success+'12',border:`1px solid ${T.success}28`,borderRadius:10,
+            padding:'10px 14px',marginBottom:14,fontSize:13,color:T.success,fontWeight:600}}>
+            Estimated Profit: ${(parseFloat(ni.price||0)-parseFloat(ni.cost||0)).toFixed(2)} ·
+            ROI: {parseFloat(ni.cost)>0?Math.round(((parseFloat(ni.price)-parseFloat(ni.cost))/parseFloat(ni.cost))*100):0}%
+          </div>
+        )}
+        <div style={{display:'flex',gap:10,marginTop:4}}>
+          <Btn variant="ghost" onClick={()=>{setShowAdd(false);setNi(blankItem);}} T={T}>Cancel</Btn>
+          <Btn onClick={addItem} T={T} style={{flex:1}}>Save Item</Btn>
         </div>
       </Modal>
+
+      {/* ── ITEM DETAIL MODAL ── */}
+      {viewItem&&(
+        <Modal show={!!viewItem} onClose={()=>setViewItem(null)} title="Item Details" width={520} T={T}>
+          <div style={{display:'flex',gap:16,marginBottom:20,alignItems:'center'}}>
+            <div style={{width:56,height:56,borderRadius:14,background:T.surface,
+              display:'flex',alignItems:'center',justifyContent:'center',fontSize:28,flexShrink:0}}>
+              {catEmoji(viewItem.category)}
+            </div>
+            <div>
+              <div style={{fontSize:16,fontWeight:700,color:T.text,marginBottom:6}}>{viewItem.title}</div>
+              <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+                {viewItem.sku&&<Badge text={viewItem.sku} color={BRAND.magenta} T={T}/>}
+                <Badge text={viewItem.status||'Unlisted'} color={statusColor[viewItem.status]||T.muted} T={T}/>
+                {viewItem.platform&&viewItem.platform!=='-'&&<Badge text={viewItem.platform} color={T.cyan} T={T}/>}
+              </div>
+            </div>
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:14}}>
+            {[
+              ['Cost',`$${(parseFloat(viewItem.cost)||0).toFixed(2)}`],
+              ['List Price',`$${(parseFloat(viewItem.price)||0).toFixed(2)}`],
+              ['Profit',`$${((parseFloat(viewItem.price)||0)-(parseFloat(viewItem.cost)||0)).toFixed(2)}`],
+              ['ROI',viewItem.cost>0?Math.round(((viewItem.price-viewItem.cost)/viewItem.cost)*100)+'%':'—'],
+              ['Condition',viewItem.condition||'—'],
+              ['Brand',viewItem.brand||'—'],
+              ['Location',viewItem.location||'—'],
+              ['Qty',viewItem.qty||1],
+            ].map(([l,v])=>(
+              <div key={l} style={{background:T.surface,borderRadius:10,padding:'10px 14px'}}>
+                <div style={{fontSize:11,color:T.muted,fontWeight:600,marginBottom:3,textTransform:'uppercase'}}>{l}</div>
+                <div style={{fontSize:14,fontWeight:700,color:T.text}}>{v}</div>
+              </div>
+            ))}
+          </div>
+          {viewItem.notes&&(
+            <div style={{background:T.surface,borderRadius:10,padding:'10px 14px',marginBottom:14}}>
+              <div style={{fontSize:11,color:T.muted,fontWeight:600,marginBottom:4,textTransform:'uppercase'}}>Notes</div>
+              <div style={{fontSize:13,color:T.text}}>{viewItem.notes}</div>
+            </div>
+          )}
+          <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}>
+            <Btn variant="ghost" small T={T} onClick={()=>setViewItem(null)}>Close</Btn>
+            <Btn variant="danger" small icon="trash" T={T} onClick={()=>{
+              setInventory(prev=>prev.filter(i=>i.id!==viewItem.id));
+              setViewItem(null);
+            }}>Delete Item</Btn>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
 
-/* ── PROFIT CALCULATOR ──────────────────────────────────────── */
-function ProfitPage({T}){
-  const [cost,setCost]=useState('25.00');
-  const [price,setPrice]=useState('64.00');
-  const [ship,setShip]=useState('5.99');
-  const [pack,setPack]=useState('1.50');
-  const [platform,setPlatform]=useState('eBay');
-  const fees={eBay:0.1315,Poshmark:0.20,Mercari:0.10,Etsy:0.065,'FB Marketplace':0.0,Whatnot:0.08};
-  const platforms=Object.keys(fees);
-  const sp=parseFloat(price)||0,ic=parseFloat(cost)||0,sc=parseFloat(ship)||0,pc=parseFloat(pack)||0;
-  const fee=sp*(fees[platform]||0),net=sp-ic-sc-pc-fee;
-  const roi=ic>0?(net/ic)*100:0,margin=sp>0?(net/sp)*100:0,be=ic+sc+pc+fee;
-  const stars=roi>=80?4:roi>=50?3:roi>=20?2:1;
-  const best=platforms.reduce((b,p)=>{const n=sp-ic-sc-pc-sp*fees[p];return n>b.profit?{platform:p,profit:n}:b},{platform,profit:net});
-
-  return(
-    <div style={{padding:'24px 28px',overflowY:'auto',flex:1}}>
-      <div style={{fontSize:26,fontWeight:800,color:T.text,letterSpacing:-0.5,marginBottom:22}}>Profit Calculator</div>
-      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(270px,1fr))',gap:20}}>
-
-        {/* Result */}
-        <div>
-          <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:20,padding:26,marginBottom:14,
-            textAlign:'center',boxShadow:`0 2px 8px ${T.shadow}`}}>
-            <div style={{display:'flex',justifyContent:'center',gap:4,marginBottom:14}}>
-              {[1,2,3,4,5].map(s=><Icon key={s} name="star" size={22} color={s<=stars?BRAND.yellow:T.border}
-                strokeWidth={s<=stars?0:1.5}/>)}
-            </div>
-            <div style={{fontSize:12,fontWeight:600,color:T.muted,marginBottom:4,letterSpacing:0.5,textTransform:'uppercase'}}>Net Profit</div>
-            <div style={{fontSize:50,fontWeight:900,color:net>=0?T.success:T.danger,letterSpacing:-2}}>
-              {net>=0?'$':'-$'}{Math.abs(net).toFixed(2)}
-            </div>
-            <div style={{fontSize:13,color:T.muted,marginTop:6}}>Platform fee: <b style={{color:T.text}}>${fee.toFixed(2)}</b></div>
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:12,marginTop:18,paddingTop:18,borderTop:`1px solid ${T.border}`}}>
-              {[['Margin',margin.toFixed(1)+'%',BRAND.yellow],['ROI',roi.toFixed(1)+'%',T.cyan],['Platform',platform,BRAND.magenta]].map(([l,v,col])=>(
-                <div key={l}><div style={{fontSize:11,color:T.muted,fontWeight:600,textTransform:'uppercase',letterSpacing:0.4}}>{l}</div>
-                <div style={{fontSize:18,fontWeight:800,color:col,marginTop:3}}>{v}</div></div>
-              ))}
-            </div>
-            {best.platform!==platform&&(
-              <div style={{marginTop:16,background:T.cyan+'12',border:`1px solid ${T.cyan}30`,borderRadius:12,
-                padding:'12px 16px',display:'flex',alignItems:'center',gap:10}}>
-                <Icon name="bulb" size={18} color={T.cyan}/>
-                <div style={{flex:1,textAlign:'left'}}>
-                  <div style={{fontSize:11,color:T.muted,fontWeight:500}}>Better Option Available</div>
-                  <div style={{fontSize:13,fontWeight:700,color:T.cyan}}>{best.platform} <span style={{color:T.success}}>+${(best.profit-net).toFixed(2)}</span></div>
-                </div>
-                <Icon name="chevronRight" size={14} color={T.muted}/>
-              </div>
-            )}
-          </div>
-          <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:16,padding:20,boxShadow:`0 1px 4px ${T.shadow}`}}>
-            <SectionLabel text="Break-Even Analysis" T={T}/>
-            {[['Break-Even Price',`$${be.toFixed(2)}`,T.warning],['Quick Sale (−20%)',`$${(sp*0.8).toFixed(2)}`,T.muted],
-              ['Market Price',`$${sp.toFixed(2)}`,T.cyan],['Premium (+15%)',`$${(sp*1.15).toFixed(2)}`,T.success]].map(([l,v,col])=>(
-              <div key={l} style={{display:'flex',justifyContent:'space-between',padding:'8px 0',borderBottom:`1px solid ${T.border}`}}>
-                <span style={{fontSize:13,color:T.muted}}>{l}</span>
-                <span style={{fontSize:13,fontWeight:700,color:col}}>{v}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Inputs */}
-        <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:20,padding:24,boxShadow:`0 2px 8px ${T.shadow}`}}>
-          <SectionLabel text="Platform" T={T}/>
-          <div style={{display:'flex',gap:7,flexWrap:'wrap',marginBottom:22}}>
-            {platforms.map(p=>(
-              <button key={p} onClick={()=>setPlatform(p)} style={{background:platform===p?BRAND.yellow:T.surface,
-                color:platform===p?'#111':T.muted,border:`1px solid ${platform===p?BRAND.yellow:T.border}`,
-                borderRadius:20,padding:'6px 14px',fontSize:13,fontWeight:600,cursor:'pointer',
-                fontFamily:"'Inter',sans-serif",transition:'all 0.15s'}}>{p}</button>
-            ))}
-          </div>
-          <Field label="Item Cost" value={cost} onChange={setCost} type="number" prefix="$" T={T}/>
-          <Field label="Sale Price" value={price} onChange={setPrice} type="number" prefix="$" T={T}/>
-          <Field label="Shipping Cost" value={ship} onChange={setShip} type="number" prefix="$" T={T}/>
-          <Field label="Packaging Cost" value={pack} onChange={setPack} type="number" prefix="$" T={T}/>
-          <div style={{background:T.surface,borderRadius:12,padding:16}}>
-            <SectionLabel text="Fee Breakdown" T={T}/>
-            {[['Gross Revenue',`$${sp.toFixed(2)}`,''],
-              [`${platform} Fee (${(fees[platform]*100).toFixed(1)}%)`,`−$${fee.toFixed(2)}`,''],
-              ['Shipping',`−$${sc.toFixed(2)}`,''],['Packaging',`−$${pc.toFixed(2)}`,''],['Item Cost',`−$${ic.toFixed(2)}`,'']].map(([l,v])=>(
-              <div key={l} style={{display:'flex',justifyContent:'space-between',padding:'5px 0',fontSize:13,color:T.muted}}>
-                <span>{l}</span><span>{v}</span>
-              </div>
-            ))}
-            <div style={{display:'flex',justifyContent:'space-between',padding:'10px 0 0',borderTop:`1px solid ${T.border}`,marginTop:6}}>
-              <span style={{fontSize:14,fontWeight:700,color:T.text}}>Net Profit</span>
-              <span style={{fontSize:15,fontWeight:800,color:net>=0?T.success:T.danger}}>{net>=0?'$':'−$'}{Math.abs(net).toFixed(2)}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ── EXPENSES ───────────────────────────────────────────────── */
 function ExpensesPage({expenses,setExpenses,T}){
   const [showAdd,setShowAdd]=useState(false);
+  const [filterCat,setFilterCat]=useState('All');
   const today=new Date().toISOString().split('T')[0];
-  const blank={title:'',category:'Shipping Supplies',amount:'',date:today};
+  const thisMonthKey=today.slice(0,7); // e.g. "2026-06"
+  const lastMonthKey=(()=>{const d=new Date();d.setMonth(d.getMonth()-1);return d.toISOString().slice(0,7);})();
+  const blank={title:'',category:'Shipping Supplies',amount:'',date:today,recurring:false,notes:''};
   const [ne,setNe]=useState(blank);
-  const cats=['Shipping Supplies','Inventory Purchase','Software','Transportation','Equipment','Other'];
-  const total=expenses.reduce((s,e)=>s+e.amount,0);
-  const thisMonth=expenses.filter(e=>e.date.startsWith('2026-06')).reduce((s,e)=>s+e.amount,0);
-  const bd=cats.map(c=>({cat:c,total:expenses.filter(e=>e.category===c).reduce((s,e)=>s+e.amount,0)})).filter(c=>c.total>0).sort((a,b)=>b.total-a.total);
-  function addExp(){setExpenses([...expenses,{...ne,id:expenses.length+1,amount:parseFloat(ne.amount)||0}]);setNe(blank);setShowAdd(false);}
+
+  const cats=['Shipping Supplies','Inventory Purchase','Software','Transportation','Equipment','Advertising','Other'];
+  const total      = expenses.reduce((s,e)=>s+(parseFloat(e.amount)||0),0);
+  const thisMonth  = expenses.filter(e=>e.date&&e.date.startsWith(thisMonthKey)).reduce((s,e)=>s+(parseFloat(e.amount)||0),0);
+  const lastMonth  = expenses.filter(e=>e.date&&e.date.startsWith(lastMonthKey)).reduce((s,e)=>s+(parseFloat(e.amount)||0),0);
+  const filtered   = filterCat==='All' ? expenses : expenses.filter(e=>e.category===filterCat);
+  const bd = cats.map(c=>({
+    cat:c,
+    total:expenses.filter(e=>e.category===c).reduce((s,e)=>s+(parseFloat(e.amount)||0),0)
+  })).filter(c=>c.total>0).sort((a,b)=>b.total-a.total);
+
+  function addExp(){
+    if(!ne.title.trim()||!ne.amount)return;
+    const item={...ne,id:Date.now(),amount:parseFloat(ne.amount)||0};
+    setExpenses(prev=>[...prev,item]);
+    setNe(blank);
+    setShowAdd(false);
+  }
 
   return(
     <div style={{padding:'24px 28px',overflowY:'auto',flex:1}}>
@@ -816,44 +904,75 @@ function ExpensesPage({expenses,setExpenses,T}){
         <div style={{fontSize:26,fontWeight:800,color:T.text,letterSpacing:-0.5}}>Expenses</div>
         <Btn onClick={()=>setShowAdd(true)} icon="plus" T={T}>Add Expense</Btn>
       </div>
+
+      {/* KPI cards */}
       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(120px,1fr))',gap:10,marginBottom:18}}>
-        <StatCard label="Total YTD" value={`$${total.toFixed(2)}`} accent={T.danger} icon="receipt" T={T}/>
-        <StatCard label="This Month" value={`$${thisMonth.toFixed(2)}`} accent={T.warning} icon="barchart" T={T}/>
-        <StatCard label="Entries" value={expenses.length} accent={T.cyan} icon="info" T={T}/>
+        <StatCard label="Total YTD"   value={`$${total.toFixed(2)}`}     accent={T.danger}  icon="receipt"  T={T}/>
+        <StatCard label="This Month"  value={`$${thisMonth.toFixed(2)}`} accent={T.warning} icon="barchart" T={T}/>
+        <StatCard label="Last Month"  value={`$${lastMonth.toFixed(2)}`} accent={T.muted}   icon="calendar" T={T}/>
+        <StatCard label="Entries"     value={expenses.length}             accent={T.cyan}    icon="info"     T={T}/>
       </div>
-      <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:18,padding:22,
-        marginBottom:16,boxShadow:`0 1px 4px ${T.shadow}`}}>
-        <SectionLabel text="Category Breakdown" T={T}/>
-        {bd.map(c=>(
-          <div key={c.cat} style={{marginBottom:14}}>
-            <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
-              <span style={{fontSize:14,color:T.text,fontWeight:500}}>{c.cat}</span>
-              <span style={{fontSize:14,fontWeight:700,color:T.text}}>${c.total.toFixed(2)}</span>
+
+      {/* Category breakdown */}
+      {bd.length>0&&(
+        <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:18,padding:22,marginBottom:16,boxShadow:`0 1px 4px ${T.shadow}`}}>
+          <SectionLabel text="Category Breakdown" T={T}/>
+          {bd.map(c=>(
+            <div key={c.cat} style={{marginBottom:12}}>
+              <div style={{display:'flex',justifyContent:'space-between',marginBottom:5}}>
+                <span style={{fontSize:14,color:T.text,fontWeight:500}}>{c.cat}</span>
+                <span style={{fontSize:14,fontWeight:700,color:T.text}}>${c.total.toFixed(2)}</span>
+              </div>
+              <ProgressBar pct={total>0?(c.total/total)*100:0} color={BRAND.yellow} T={T}/>
             </div>
-            <ProgressBar pct={(c.total/total)*100} color={BRAND.yellow} T={T}/>
-          </div>
+          ))}
+        </div>
+      )}
+
+      {/* Filter chips */}
+      <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:12}}>
+        {['All',...cats].map(c=>(
+          <button key={c} onClick={()=>setFilterCat(c)} style={{
+            background:filterCat===c?BRAND.yellow:T.surface,
+            color:filterCat===c?'#111':T.muted,
+            border:`1px solid ${filterCat===c?BRAND.yellow:T.border}`,
+            borderRadius:20,padding:'5px 13px',fontSize:12,fontWeight:600,
+            cursor:'pointer',fontFamily:"'Inter',sans-serif",transition:'all .14s'
+          }}>{c}</button>
         ))}
       </div>
+
+      {/* Expense list */}
       <div style={{display:'flex',flexDirection:'column',gap:8}}>
-        {expenses.map(exp=>(
+        {filtered.length===0&&(
+          <div style={{textAlign:'center',padding:'48px 24px',color:T.muted}}>
+            <Icon name="receipt" size={44} color={T.muted} style={{opacity:.3}}/>
+            <div style={{fontSize:15,fontWeight:700,color:T.text,marginTop:14}}>No expenses yet</div>
+            <div style={{fontSize:13,marginTop:4}}>Click "Add Expense" to start tracking</div>
+          </div>
+        )}
+        {filtered.map(exp=>(
           <div key={exp.id} style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,
-            padding:'14px 18px',display:'flex',alignItems:'center',gap:14,boxShadow:`0 1px 3px ${T.shadow}`}}>
-            <div style={{width:40,height:40,borderRadius:11,background:T.warning+'18',display:'flex',
-              alignItems:'center',justifyContent:'center',flexShrink:0}}>
+            padding:'13px 17px',display:'flex',alignItems:'center',gap:14,boxShadow:`0 1px 3px ${T.shadow}`}}>
+            <div style={{width:40,height:40,borderRadius:11,background:T.warning+'18',
+              display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
               <Icon name="receipt" size={18} color={T.warning}/>
             </div>
             <div style={{flex:1,minWidth:0}}>
               <div style={{fontSize:14,fontWeight:600,color:T.text}}>{exp.title}</div>
               <div style={{fontSize:12,color:T.muted,marginTop:1}}>{exp.category} · {exp.date}</div>
+              {exp.notes&&<div style={{fontSize:11,color:T.muted,marginTop:1,opacity:.7}}>{exp.notes}</div>}
             </div>
             <div style={{textAlign:'right',flexShrink:0}}>
-              <div style={{fontSize:15,fontWeight:800,color:T.text}}>${exp.amount.toFixed(2)}</div>
+              <div style={{fontSize:15,fontWeight:800,color:T.text}}>${(parseFloat(exp.amount)||0).toFixed(2)}</div>
               {exp.recurring&&<Badge text="Recurring" color={T.cyan} T={T}/>}
             </div>
           </div>
         ))}
       </div>
-      <Modal show={showAdd} onClose={()=>setShowAdd(false)} title="Add Expense" width={420} T={T}>
+
+      {/* Add Expense Modal */}
+      <Modal show={showAdd} onClose={()=>{setShowAdd(false);setNe(blank);}} title="Add Expense" width={440} T={T}>
         <Field label="Description" value={ne.title} onChange={v=>setNe({...ne,title:v})} T={T}/>
         <Field label="Amount" value={ne.amount} onChange={v=>setNe({...ne,amount:v})} type="number" prefix="$" T={T}/>
         <div style={{marginBottom:14}}>
@@ -865,11 +984,206 @@ function ExpensesPage({expenses,setExpenses,T}){
           </select>
         </div>
         <Field label="Date" value={ne.date} onChange={v=>setNe({...ne,date:v})} type="date" T={T}/>
-        <div style={{display:'flex',gap:10,marginTop:8}}>
-          <Btn variant="ghost" onClick={()=>setShowAdd(false)} T={T}>Cancel</Btn>
-          <Btn onClick={addExp} T={T}>Save Expense</Btn>
+        <Field label="Notes (optional)" value={ne.notes||''} onChange={v=>setNe({...ne,notes:v})} T={T}/>
+        <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:16,padding:'10px 0',borderTop:`1px solid ${T.border}`,marginTop:4}}>
+          <input type="checkbox" id="exp-recur" checked={!!ne.recurring}
+            onChange={e=>setNe({...ne,recurring:e.target.checked})}
+            style={{width:16,height:16,accentColor:BRAND.yellow,cursor:'pointer'}}/>
+          <label htmlFor="exp-recur" style={{fontSize:14,color:T.text,cursor:'pointer'}}>
+            Recurring monthly expense
+          </label>
+        </div>
+        <div style={{display:'flex',gap:10}}>
+          <Btn variant="ghost" onClick={()=>{setShowAdd(false);setNe(blank);}} T={T}>Cancel</Btn>
+          <Btn onClick={addExp} T={T} style={{flex:1}}>Save Expense</Btn>
         </div>
       </Modal>
+    </div>
+  );
+}
+
+/* ── PROFIT CALCULATOR ──────────────────────────────────────── */
+function ProfitPage({T}){
+  const FEES={
+    'eBay':0.1315,'Poshmark':0.20,'Mercari':0.10,
+    'Etsy':0.065,'FB Marketplace':0.0,'Whatnot':0.08,
+    'Amazon':0.15,'Depop':0.10,'Craigslist':0.0,
+  };
+  const platforms=Object.keys(FEES);
+
+  const [plat,setPlat]=useState('eBay');
+  const [cost,setCost]=useState('');
+  const [price,setPrice]=useState('');
+  const [ship,setShip]=useState('');
+  const [pack,setPack]=useState('');
+  const [tax,setTax]=useState('');
+
+  const sp=parseFloat(price)||0;
+  const ic=parseFloat(cost)||0;
+  const sc=parseFloat(ship)||0;
+  const pc=parseFloat(pack)||0;
+  const tx=parseFloat(tax)||0;
+  const feeRate=FEES[plat]||0;
+  const fee=sp*feeRate;
+  const net=sp-ic-sc-pc-fee-tx;
+  const roi=ic>0?(net/ic)*100:0;
+  const margin=sp>0?(net/sp)*100:0;
+  const breakEven=ic+sc+pc+fee+tx;
+  const stars=roi>=100?5:roi>=75?4:roi>=50?3:roi>=25?2:roi>0?1:0;
+
+  const best=platforms.reduce((b,p)=>{
+    const n=sp-ic-sc-pc-sp*(FEES[p]||0)-tx;
+    return n>b.profit?{p,profit:n}:b;
+  },{p:plat,profit:net});
+
+  const rows=[
+    ['Gross Revenue',`$${sp.toFixed(2)}`,T.text],
+    [`${plat} Fee (${(feeRate*100).toFixed(1)}%)`,`-$${fee.toFixed(2)}`,T.danger],
+    ['Shipping Cost',`-$${sc.toFixed(2)}`,T.danger],
+    ['Packaging',`-$${pc.toFixed(2)}`,T.danger],
+    ['Sales Tax',`-$${tx.toFixed(2)}`,T.danger],
+    ['Item Cost',`-$${ic.toFixed(2)}`,T.danger],
+  ];
+
+  return(
+    <div style={{padding:'24px 28px',overflowY:'auto',flex:1}}>
+      <div style={{fontSize:26,fontWeight:800,color:T.text,letterSpacing:-0.5,marginBottom:22}}>
+        Profit Calculator
+      </div>
+
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(280px,1fr))',gap:20}}>
+
+        {/* ── Result panel ── */}
+        <div style={{display:'flex',flexDirection:'column',gap:14}}>
+          <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:20,
+            padding:28,textAlign:'center',boxShadow:`0 2px 8px ${T.shadow}`}}>
+            {/* Star rating */}
+            <div style={{display:'flex',justifyContent:'center',gap:4,marginBottom:16}}>
+              {[1,2,3,4,5].map(s=>(
+                <svg key={s} width={24} height={24} viewBox="0 0 24 24"
+                  fill={s<=stars?BRAND.yellow:'none'}
+                  stroke={s<=stars?BRAND.yellow:T.muted}
+                  strokeWidth={1.5}>
+                  <polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26 12,2"/>
+                </svg>
+              ))}
+            </div>
+
+            <div style={{fontSize:11,fontWeight:700,color:T.muted,letterSpacing:0.8,
+              textTransform:'uppercase',marginBottom:8}}>Net Profit</div>
+            <div style={{fontSize:54,fontWeight:900,letterSpacing:-2,lineHeight:1,
+              color:net>0?T.success:net<0?T.danger:T.muted}}>
+              {net>=0?'$':'-$'}{Math.abs(net).toFixed(2)}
+            </div>
+            {sp>0&&<div style={{fontSize:13,color:T.muted,marginTop:8}}>
+              Platform fee: <b style={{color:T.text}}>${fee.toFixed(2)}</b>
+            </div>}
+
+            {/* KPI pills */}
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10,
+              marginTop:20,paddingTop:20,borderTop:`1px solid ${T.border}`}}>
+              {[
+                ['Margin',isFinite(margin)?margin.toFixed(1)+'%':'—',BRAND.yellow],
+                ['ROI',isFinite(roi)?roi.toFixed(1)+'%':'—',T.cyan],
+                ['Platform',plat,BRAND.magenta],
+              ].map(([l,v,col])=>(
+                <div key={l} style={{background:T.surface,borderRadius:12,padding:'10px 6px'}}>
+                  <div style={{fontSize:10,color:T.muted,fontWeight:700,
+                    textTransform:'uppercase',letterSpacing:0.4,marginBottom:4}}>{l}</div>
+                  <div style={{fontSize:14,fontWeight:800,color:col,wordBreak:'break-word'}}>{v}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Better platform tip */}
+            {best.p!==plat&&sp>0&&best.profit>net&&(
+              <div onClick={()=>setPlat(best.p)}
+                style={{marginTop:14,background:T.cyan+'12',border:`1px solid ${T.cyan}28`,
+                  borderRadius:12,padding:'12px 16px',display:'flex',alignItems:'center',
+                  gap:10,textAlign:'left',cursor:'pointer'}}>
+                <Icon name="bulb" size={18} color={T.cyan}/>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:11,color:T.muted}}>Better platform available</div>
+                  <div style={{fontSize:13,fontWeight:700,color:T.cyan}}>
+                    Switch to {best.p}
+                    <span style={{color:T.success}}> +${(best.profit-net).toFixed(2)}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Break-even analysis */}
+          <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:18,
+            padding:'18px 20px',boxShadow:`0 1px 4px ${T.shadow}`}}>
+            <SectionLabel text="Price Analysis" T={T}/>
+            {[
+              ['Break-Even Price',`$${breakEven.toFixed(2)}`,T.warning],
+              ['Quick Sale (-20%)',sp>0?`$${(sp*0.8).toFixed(2)}`:'—',T.muted],
+              ['Market Price',sp>0?`$${sp.toFixed(2)}`:'—',T.cyan],
+              ['Premium (+15%)',sp>0?`$${(sp*1.15).toFixed(2)}`:'—',T.success],
+            ].map(([l,v,col])=>(
+              <div key={l} style={{display:'flex',justifyContent:'space-between',
+                padding:'9px 0',borderBottom:`1px solid ${T.border}`}}>
+                <span style={{fontSize:13,color:T.muted}}>{l}</span>
+                <span style={{fontSize:14,fontWeight:700,color:col}}>{v}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* ── Input panel ── */}
+        <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:20,
+          padding:24,boxShadow:`0 2px 8px ${T.shadow}`}}>
+
+          <SectionLabel text="Select Platform" T={T}/>
+          <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:22}}>
+            {platforms.map(p=>(
+              <button key={p} onClick={()=>setPlat(p)} style={{
+                background:plat===p?BRAND.yellow:T.surface,
+                color:plat===p?'#111':T.muted,
+                border:`1px solid ${plat===p?BRAND.yellow:T.border}`,
+                borderRadius:20,padding:'6px 13px',fontSize:13,fontWeight:600,
+                cursor:'pointer',fontFamily:"'Inter',sans-serif",transition:'all .14s',
+              }}>{p}</button>
+            ))}
+          </div>
+
+          <Field label="Item Cost (what you paid)" value={cost} onChange={setCost} type="number" prefix="$" T={T}/>
+          <Field label="Sale Price (what you'll sell for)" value={price} onChange={setPrice} type="number" prefix="$" T={T}/>
+          <Field label="Shipping Cost" value={ship} onChange={setShip} type="number" prefix="$" T={T}/>
+          <Field label="Packaging Cost" value={pack} onChange={setPack} type="number" prefix="$" T={T}/>
+          <Field label="Sales Tax (if applicable)" value={tax} onChange={setTax} type="number" prefix="$" T={T}/>
+
+          {/* Fee breakdown */}
+          <div style={{background:T.surface,borderRadius:14,padding:'16px 18px',marginTop:4}}>
+            <SectionLabel text="Fee Breakdown" T={T}/>
+            {rows.map(([l,v,col])=>(
+              <div key={l} style={{display:'flex',justifyContent:'space-between',
+                padding:'5px 0',fontSize:13}}>
+                <span style={{color:T.muted}}>{l}</span>
+                <span style={{color:col,fontWeight:500}}>{v}</span>
+              </div>
+            ))}
+            <div style={{display:'flex',justifyContent:'space-between',
+              padding:'10px 0 0',borderTop:`1px solid ${T.border}`,marginTop:6}}>
+              <span style={{fontSize:14,fontWeight:700,color:T.text}}>Net Profit</span>
+              <span style={{fontSize:15,fontWeight:900,
+                color:net>0?T.success:net<0?T.danger:T.muted}}>
+                {net>=0?'$':'-$'}{Math.abs(net).toFixed(2)}
+              </span>
+            </div>
+          </div>
+
+          {/* Reset */}
+          <button onClick={()=>{setCost('');setPrice('');setShip('');setPack('');setTax('');}}
+            style={{marginTop:14,background:'none',border:`1px solid ${T.border}`,
+              borderRadius:10,padding:'8px 16px',fontSize:13,color:T.muted,
+              cursor:'pointer',fontFamily:"'Inter',sans-serif",width:'100%'}}>
+            Clear Calculator
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -883,7 +1197,7 @@ function MileagePage({mileage,setMileage,T}){
   const purposes=['Sourcing','Shipping Run','Pickup','Business Travel'];
   const totalMiles=mileage.reduce((s,m)=>s+m.miles,0);
   const totalDed=mileage.reduce((s,m)=>s+m.deduction,0);
-  function addTrip(){const miles=parseFloat(nt.miles)||0;setMileage([...mileage,{...nt,id:mileage.length+1,miles,deduction:parseFloat((miles*MILEAGE_RATE).toFixed(2))}]);setNt(blank);setShowAdd(false);}
+  function addTrip(){const miles=parseFloat(nt.miles)||0;setMileage([...mileage,{...nt,id:Date.now(),miles,deduction:parseFloat((miles*MILEAGE_RATE).toFixed(2))}]);setNt(blank);setShowAdd(false);}
 
   return(
     <div style={{padding:'24px 28px',overflowY:'auto',flex:1}}>
@@ -1047,7 +1361,8 @@ function ReportsPage({inventory,expenses,T}){
 
 /* ── GOALS ──────────────────────────────────────────────────── */
 function GoalsPage({goals,setGoals,T}){
-  const [tab,setTab]=useState('Active');
+  const activeCount=goals.filter(g=>g.status==='active').length;
+  const [tab,setTab]=useState(activeCount>0?'Active':'Available');
   const tc={SALES:T.success,REVENUE:BRAND.yellow,LISTING:T.cyan,INVENTORY:BRAND.magenta};
   const avail=[
     {id:10,title:'Quick Wins',type:'SALES',description:'Get 5 sales in next 7 days',target:5,unit:'sales',duration:'1 week'},
@@ -1071,6 +1386,13 @@ function GoalsPage({goals,setGoals,T}){
 
       {tab==='Active'&&(
         <div style={{display:'flex',flexDirection:'column',gap:12}}>
+          {goals.filter(g=>g.status==='active').length===0&&(
+            <div style={{textAlign:'center',padding:64,color:T.muted}}>
+              <Icon name="target" size={52} color={T.subtleMuted}/>
+              <div style={{marginTop:16,fontSize:16,fontWeight:700}}>No active challenges</div>
+              <div style={{fontSize:13,marginTop:4}}>Head to the Available tab to accept a challenge!</div>
+            </div>
+          )}
           {goals.filter(g=>g.status==='active').map(goal=>(
             <div key={goal.id} style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:18,padding:22,
               boxShadow:`0 1px 6px ${T.shadow}`}}>
@@ -1247,7 +1569,7 @@ function LabelsPage({inventory,T}){
           return(
             <div key={item.id} onClick={()=>toggle(item.id)}
               style={{background:T.card,border:`1.5px solid ${isSel?BRAND.yellow:T.border}`,borderRadius:13,padding:'12px 16px',display:'flex',alignItems:'center',gap:14,cursor:'pointer',transition:'border-color .14s',boxShadow:`0 1px 3px ${T.shadow}`}}>
-              <div style={{width:22,height:22,borderRadius:6,border:`2px solid ${isSel?BRAND.yellow:T.faint||T.border}`,background:isSel?BRAND.yellow:'transparent',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+              <div style={{width:22,height:22,borderRadius:6,border:`2px solid ${isSel?BRAND.yellow:T.muted||T.border}`,background:isSel?BRAND.yellow:'transparent',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
                 {isSel&&<Icon name="check" size={13} color="#111" strokeWidth={2.5}/>}
               </div>
               <div style={{width:40,height:40,borderRadius:10,background:T.surface,display:'flex',alignItems:'center',justifyContent:'center',fontSize:20,flexShrink:0}}>
@@ -1311,117 +1633,429 @@ function LabelsPage({inventory,T}){
 
 
 /* ── IMPORT / EXPORT PAGE ────────────────────────────────── */
-function ExportPage({inventory,expenses,mileage,T}){
+function ExportPage({inventory,expenses,mileage,setInventory,T}){
   const [tab,setTab]=useState('export');
-  const [year,setYear]=useState('2026');
-  const [exporting,setExporting]=useState(false);
-  const [done,setDone]=useState(false);
-  const [importText,setImportText]=useState('');
+  const [year,setYear]=useState(new Date().getFullYear().toString());
+  const [exportDone,setExportDone]=useState('');
+  const [importing,setImporting]=useState(false);
+  const [dragOver,setDragOver]=useState(false);
+  const [importRows,setImportRows]=useState(null);
   const [importMsg,setImportMsg]=useState('');
+  const [importType,setImportType]=useState('inventory');
+  const fileInputRef=React.useRef(null);
 
+  /* ── CSV download helper ── */
   function downloadCSV(rows,filename){
-    const csv=rows.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
-    const blob=new Blob([csv],{type:'text/csv'});
+    const csv=rows.map(r=>
+      r.map(v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"').join(',')
+    ).join('\n');
+    const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
     const url=URL.createObjectURL(blob);
-    const a=document.createElement('a');a.href=url;a.download=filename;a.click();URL.revokeObjectURL(url);
+    const a=document.createElement('a');
+    a.href=url;
+    a.download=filename;
+    a.style.display='none';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(url);},200);
   }
-  function doExportInventory(){
-    setExporting(true);setDone(false);
-    setTimeout(()=>{
-      downloadCSV([['SKU','Title','Category','Brand','Condition','Qty','Cost','Price','Status','Platform','Location','Days Listed'],...inventory.map(i=>[i.sku,i.title,i.category,i.brand,i.condition,i.qty,i.cost,i.price,i.status,i.platform,i.location,i.daysListed])],`rrh-inventory-${year}.csv`);
-      setExporting(false);setDone(true);setTimeout(()=>setDone(false),4000);
-    },1000);
+
+  function exportInventory(){
+    downloadCSV([
+      ['SKU','Title','Category','Brand','Condition','Qty','Cost','Price',
+       'Status','Platform','Location','Notes','Date Added'],
+      ...inventory.map(i=>[
+        i.sku||'',i.title||'',i.category||'',i.brand||'',i.condition||'',
+        i.qty||1,parseFloat(i.cost||0).toFixed(2),parseFloat(i.price||0).toFixed(2),
+        i.status||'',i.platform||'',i.location||'',i.notes||'',i.dateAdded||''
+      ])
+    ],`rrh-inventory-${year}.csv`);
+    setExportDone('Inventory exported — check your Downloads folder.');
+    setTimeout(()=>setExportDone(''),4000);
   }
-  function doExportExpenses(){downloadCSV([['Date','Description','Category','Amount','Recurring'],...expenses.map(e=>[e.date,e.title,e.category,e.amount,e.recurring?'Yes':'No'])],`rrh-expenses-${year}.csv`);}
-  function doExportMileage(){downloadCSV([['Date','From','To','Miles','Purpose','Deduction'],...mileage.map(m=>[m.date,m.from,m.to,m.miles,m.purpose,m.deduction])],`rrh-mileage-${year}.csv`);}
+
+  function exportExpenses(){
+    downloadCSV([
+      ['Date','Description','Category','Amount','Recurring','Notes'],
+      ...expenses.map(e=>[
+        e.date||'',e.title||'',e.category||'',
+        parseFloat(e.amount||0).toFixed(2),e.recurring?'Yes':'No',e.notes||''
+      ])
+    ],`rrh-expenses-${year}.csv`);
+    setExportDone('Expenses exported — check your Downloads folder.');
+    setTimeout(()=>setExportDone(''),4000);
+  }
+
+  function exportMileage(){
+    downloadCSV([
+      ['Date','From','To','Miles','Purpose','Deduction'],
+      ...mileage.map(m=>[
+        m.date||'',m.from||'',m.to||'',m.miles||0,
+        m.purpose||'',parseFloat(m.deduction||0).toFixed(2)
+      ])
+    ],`rrh-mileage-${year}.csv`);
+    setExportDone('Mileage exported — check your Downloads folder.');
+    setTimeout(()=>setExportDone(''),4000);
+  }
+
+  /* ── CSV parser ── */
+  function parseCSV(text){
+    const lines=text.trim().split('\n').filter(l=>l.trim());
+    if(lines.length<2)return null;
+    function splitLine(line){
+      const vals=[];let cur='';let inQ=false;
+      for(let i=0;i<line.length;i++){
+        const ch=line[i];
+        if(ch==='"'){
+          if(inQ&&line[i+1]==='"'){cur+='"';i++;}
+          else{inQ=!inQ;}
+        } else if(ch===','&&!inQ){vals.push(cur.trim());cur='';}
+        else{cur+=ch;}
+      }
+      vals.push(cur.trim());
+      return vals;
+    }
+    const headers=splitLine(lines[0]).map(h=>h.toLowerCase().replace(/[^a-z]/g,''));
+    return lines.slice(1).map((line,i)=>{
+      const vals=splitLine(line);
+      const obj={};
+      headers.forEach((h,j)=>{obj[h]=(vals[j]||'').replace(/^"|"$/g,'').trim();});
+      return obj;
+    }).filter(r=>Object.values(r).some(v=>v));
+  }
+
+  /* ── Handle file (from drop OR file picker) ── */
+  function handleFile(file){
+    if(!file)return;
+    if(!file.name.match(/\.(csv|txt)$/i)){
+      setImportMsg('Please upload a .csv file.');
+      return;
+    }
+    setImporting(true);
+    setImportMsg('');
+    setImportRows(null);
+    const reader=new FileReader();
+    reader.onload=e=>{
+      try{
+        const rows=parseCSV(e.target.result);
+        if(!rows||rows.length===0){
+          setImportMsg('No data rows found. Make sure the file has a header row and data.');
+          setImporting(false);
+          return;
+        }
+        setImportRows(rows);
+        setImportMsg('✓ Parsed '+rows.length+' row'+(rows.length!==1?'s':'')+
+          ' — review below and click Import to add to your app.');
+      }catch(err){
+        setImportMsg('Parse error: '+err.message);
+      }
+      setImporting(false);
+    };
+    reader.onerror=()=>{setImportMsg('Could not read file.');setImporting(false);};
+    reader.readAsText(file);
+  }
+
+  /* ── Drag & drop handlers ── */
+  function onDragOver(e){
+    e.preventDefault();   /* CRITICAL — stops browser opening the file */
+    e.stopPropagation();
+    setDragOver(true);
+  }
+  function onDragEnter(e){
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(true);
+  }
+  function onDragLeave(e){
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(false);
+  }
+  function onDrop(e){
+    e.preventDefault();   /* CRITICAL — stops browser opening the file */
+    e.stopPropagation();
+    setDragOver(false);
+    const file=e.dataTransfer.files[0];
+    handleFile(file);
+  }
+
+  /* ── Do the actual import ── */
+  function doImport(){
+    if(!importRows||!importRows.length)return;
+    if(importType==='inventory'&&setInventory){
+      const newItems=importRows.map((r,i)=>({
+        id:Date.now()+i,
+        sku:r.sku||r.stocknumber||('IMP-'+String(i+1).padStart(4,'0')),
+        title:r.title||r.name||r.item||'Untitled',
+        category:r.category||r.cat||'',
+        brand:r.brand||'',
+        condition:r.condition||r.cond||'Good',
+        qty:parseInt(r.qty||r.quantity||1)||1,
+        cost:parseFloat(r.cost||r.purchasecost||0)||0,
+        price:parseFloat(r.price||r.listprice||r.saleprice||0)||0,
+        status:r.status||'Unlisted',
+        platform:r.platform||'-',
+        location:r.location||r.storagelocation||'',
+        notes:r.notes||r.note||'',
+        dateAdded:r.dateadded||new Date().toISOString().slice(0,10),
+        daysListed:parseInt(r.dayslisted||0)||0,
+      }));
+      setInventory(prev=>[...prev,...newItems]);
+      setImportMsg('✅ Imported '+newItems.length+' items into your inventory!');
+      setImportRows(null);
+      setTimeout(()=>setImportMsg(''),5000);
+    }
+  }
+
+  const EXPORTS=[
+    {label:'Inventory CSV',sub:inventory.length+' items · SKUs, costs, prices, status',icon:'box',color:T.cyan,fn:exportInventory},
+    {label:'Expenses CSV',sub:expenses.length+' records · categories & dates',icon:'receipt',color:T.warning,fn:exportExpenses},
+    {label:'Mileage Log CSV',sub:mileage.length+' trips · IRS deduction amounts',icon:'car',color:T.success,fn:exportMileage},
+  ];
 
   return(
     <div style={{padding:'24px 28px',overflowY:'auto',flex:1}}>
-      <div style={{fontSize:26,fontWeight:800,color:T.text,letterSpacing:-0.5,marginBottom:20}}>Import / Export</div>
-      <div style={{display:'flex',gap:4,marginBottom:22,background:T.surface,borderRadius:14,padding:5,width:'fit-content',border:`1px solid ${T.border}`}}>
-        {[['export','Export Data','download'],['import','Import Data','import']].map(([id,lbl,ic])=>(
-          <button key={id} onClick={()=>setTab(id)} style={{background:tab===id?BRAND.yellow:'transparent',color:tab===id?'#111':T.muted,border:'none',borderRadius:10,padding:'9px 20px',fontSize:14,fontWeight:600,cursor:'pointer',fontFamily:"'Inter',sans-serif",transition:'all .14s',display:'flex',alignItems:'center',gap:7}}>
+      <div style={{fontSize:26,fontWeight:800,color:T.text,letterSpacing:-0.5,marginBottom:20}}>
+        Import / Export
+      </div>
+
+      {/* Tab switcher */}
+      <div style={{display:'flex',gap:4,marginBottom:22,background:T.surface,borderRadius:14,
+        padding:5,width:'fit-content',border:`1px solid ${T.border}`}}>
+        {[['export','Export Data','download'],['import','Import Data','upload']].map(([id,lbl,ic])=>(
+          <button key={id}
+            onClick={()=>{setTab(id);setExportDone('');setImportMsg('');setImportRows(null);setDragOver(false);}}
+            style={{background:tab===id?BRAND.yellow:'transparent',color:tab===id?'#111':T.muted,
+              border:'none',borderRadius:10,padding:'9px 20px',fontSize:14,fontWeight:600,
+              cursor:'pointer',fontFamily:"'Inter',sans-serif",transition:'all .14s',
+              display:'inline-flex',alignItems:'center',gap:7}}>
             <Icon name={ic} size={15} color={tab===id?'#111':T.muted}/>{lbl}
           </button>
         ))}
       </div>
 
+      {/* ═══ EXPORT TAB ═══ */}
       {tab==='export'&&(
         <div>
+          {/* Summary */}
           <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10,marginBottom:16}}>
-            {[[inventory.length,'Inventory Items','box',T.cyan],[expenses.length,'Expense Records','receipt',T.warning],[mileage.length,'Mileage Trips','car',T.success]].map(([v,l,i,c])=>(
-              <div key={l} style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:'16px 18px',boxShadow:`0 1px 4px ${T.shadow}`,display:'flex',alignItems:'center',gap:12}}>
-                <div style={{width:40,height:40,borderRadius:10,background:c+'1A',display:'flex',alignItems:'center',justifyContent:'center'}}><Icon name={i} size={20} color={c}/></div>
-                <div><div style={{fontSize:22,fontWeight:800,color:T.text}}>{v}</div><div style={{fontSize:12,color:T.muted}}>{l}</div></div>
+            {[[inventory.length,'Inventory Items','box',T.cyan],
+              [expenses.length,'Expense Records','receipt',T.warning],
+              [mileage.length,'Mileage Trips','car',T.success]].map(([v,l,i,c])=>(
+              <div key={l} style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,
+                padding:'16px 18px',display:'flex',alignItems:'center',gap:12,
+                boxShadow:`0 1px 4px ${T.shadow}`}}>
+                <div style={{width:40,height:40,borderRadius:10,background:c+'18',
+                  display:'flex',alignItems:'center',justifyContent:'center'}}>
+                  <Icon name={i} size={20} color={c}/>
+                </div>
+                <div>
+                  <div style={{fontSize:22,fontWeight:800,color:T.text}}>{v}</div>
+                  <div style={{fontSize:12,color:T.muted}}>{l}</div>
+                </div>
               </div>
             ))}
           </div>
-          <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:18,padding:'18px 22px',marginBottom:16,boxShadow:`0 1px 4px ${T.shadow}`}}>
-            <div style={{fontSize:11,fontWeight:700,color:T.muted,letterSpacing:.8,textTransform:'uppercase',marginBottom:12}}>Select Year</div>
-            <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:8}}>
-              {['2024','2025','2026','All Time'].map(y=>(
-                <button key={y} onClick={()=>setYear(y)} style={{background:year===y?BRAND.yellow:T.surface,color:year===y?'#111':T.muted,border:`1px solid ${year===y?BRAND.yellow:T.border}`,borderRadius:20,padding:'7px 16px',fontSize:13,fontWeight:600,cursor:'pointer',fontFamily:"'Inter',sans-serif",transition:'all .14s'}}>{y}</button>
+
+          {/* Year selector */}
+          <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:18,
+            padding:'18px 22px',marginBottom:16,boxShadow:`0 1px 4px ${T.shadow}`}}>
+            <SectionLabel text="Select Year" T={T}/>
+            <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+              {[String(new Date().getFullYear()),String(new Date().getFullYear()-1),'All Time'].map(y=>(
+                <button key={y} onClick={()=>setYear(y)} style={{
+                  background:year===y?BRAND.yellow:T.surface,
+                  color:year===y?'#111':T.muted,
+                  border:`1px solid ${year===y?BRAND.yellow:T.border}`,
+                  borderRadius:20,padding:'7px 16px',fontSize:13,fontWeight:600,
+                  cursor:'pointer',fontFamily:"'Inter',sans-serif"}}>
+                  {y}
+                </button>
               ))}
             </div>
-            <div style={{fontSize:12,color:T.muted}}>{inventory.length} items · {expenses.length} expenses · {mileage.length} mileage entries</div>
           </div>
+
+          {/* Export buttons */}
           <div style={{display:'flex',flexDirection:'column',gap:10,marginBottom:14}}>
-            {[
-              ['Inventory CSV','Full inventory with SKUs, costs, prices, status','box',T.cyan,doExportInventory],
-              ['Expenses CSV','All expense records with categories & dates','receipt',T.warning,doExportExpenses],
-              ['Mileage Log CSV','All trips with IRS deduction amounts','car',T.success,doExportMileage],
-              ['P&L Statement PDF','Accountant-ready profit & loss report','file',BRAND.magenta,()=>alert('PDF export — connect your accountant tool to enable this feature.')],
-            ].map(([lbl,sub,ic,col,fn])=>(
-              <div key={lbl} style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:'14px 18px',display:'flex',alignItems:'center',gap:14,boxShadow:`0 1px 3px ${T.shadow}`}}>
-                <div style={{width:42,height:42,borderRadius:11,background:col+'1A',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}><Icon name={ic} size={20} color={col}/></div>
-                <div style={{flex:1}}><div style={{fontSize:14,fontWeight:700,color:T.text}}>{lbl}</div><div style={{fontSize:12,color:T.muted,marginTop:2}}>{sub}</div></div>
-                <Btn sm ic="download" v="ghost" T={T} onClick={fn}>Download</Btn>
+            {EXPORTS.map(({label,sub,icon,color,fn})=>(
+              <div key={label} style={{background:T.card,border:`1px solid ${T.border}`,
+                borderRadius:14,padding:'14px 18px',display:'flex',alignItems:'center',
+                gap:14,boxShadow:`0 1px 3px ${T.shadow}`}}>
+                <div style={{width:42,height:42,borderRadius:11,background:color+'18',
+                  display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                  <Icon name={icon} size={20} color={color}/>
+                </div>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:14,fontWeight:700,color:T.text}}>{label}</div>
+                  <div style={{fontSize:12,color:T.muted,marginTop:2}}>{sub}</div>
+                </div>
+                <Btn small icon="download" variant="ghost" T={T} onClick={fn}>Download</Btn>
               </div>
             ))}
           </div>
-          {exporting&&<div style={{background:T.surface,borderRadius:14,padding:'16px 20px',display:'flex',alignItems:'center',gap:12,marginBottom:10}}>
-            <Icon name="spinner" size={20} color={T.cyan} style={{animation:'spin 1s linear infinite'}}/>
-            <div><div style={{fontSize:14,fontWeight:600,color:T.text}}>Exporting…</div><div style={{fontSize:12,color:T.muted}}>Preparing your file.</div></div>
-          </div>}
-          {done&&<div style={{background:T.success+'12',border:`1px solid ${T.success}28`,borderRadius:14,padding:'14px 18px',display:'flex',alignItems:'center',gap:10,marginBottom:10}}>
-            <Icon name="checkCircle" size={20} color={T.success}/>
-            <div style={{fontSize:14,fontWeight:600,color:T.success}}>Export complete — check your Downloads folder.</div>
-          </div>}
-          <div style={{background:T.cyan+'10',border:`1px solid ${T.cyan}28`,borderRadius:14,padding:'14px 18px',display:'flex',alignItems:'center',gap:12}}>
-            <Icon name="info" size={18} color={T.cyan}/>
-            <div style={{fontSize:13,color:T.text}}>Your data is securely stored in the cloud with daily automatic backups.</div>
+
+          {exportDone&&(
+            <div style={{background:T.success+'12',border:`1px solid ${T.success}28`,
+              borderRadius:14,padding:'13px 18px',display:'flex',alignItems:'center',gap:10}}>
+              <Icon name="checkCircle" size={18} color={T.success}/>
+              <div style={{fontSize:14,fontWeight:600,color:T.success}}>{exportDone}</div>
+            </div>
+          )}
+
+          <div style={{background:T.cyan+'0E',border:`1px solid ${T.cyan}28`,borderRadius:14,
+            padding:'13px 18px',marginTop:12,display:'flex',alignItems:'center',gap:12}}>
+            <Icon name="shield" size={18} color={T.cyan}/>
+            <div style={{fontSize:13,color:T.text}}>
+              Your data lives in this browser's IndexedDB. Export regularly as your backup.
+            </div>
           </div>
         </div>
       )}
 
+      {/* ═══ IMPORT TAB ═══ */}
       {tab==='import'&&(
         <div>
-          <div style={{border:`2px dashed ${T.border}`,borderRadius:18,padding:'40px 24px',textAlign:'center',marginBottom:16,background:T.card,cursor:'pointer',transition:'border-color .14s'}}
-            onMouseEnter={e=>e.currentTarget.style.borderColor=BRAND.yellow}
-            onMouseLeave={e=>e.currentTarget.style.borderColor=T.border}>
-            <Icon name="upload" size={40} color={T.muted} style={{opacity:.35,marginBottom:14}}/>
-            <div style={{fontSize:16,fontWeight:700,color:T.text,marginBottom:6}}>Drag & Drop CSV or XLSX</div>
-            <div style={{fontSize:13,color:T.muted,marginBottom:16}}>or click to browse files</div>
-            <Btn v="ghost" ic="upload" T={T}>Choose File</Btn>
-          </div>
-          <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:18,padding:'18px 22px',marginBottom:14,boxShadow:`0 1px 4px ${T.shadow}`}}>
-            <div style={{fontSize:11,fontWeight:700,color:T.muted,letterSpacing:.8,textTransform:'uppercase',marginBottom:12}}>CSV Field Mapping</div>
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6}}>
-              {[['sku','SKU'],['title','Title'],['category','Category'],['brand','Brand'],['cost','Purchase Cost'],['price','List Price'],['status','Status'],['platform','Platform'],['location','Storage Location'],['condition','Condition']].map(([f,l])=>(
-                <div key={f} style={{display:'flex',gap:8,alignItems:'center',padding:'6px 0',borderBottom:`1px solid ${T.border}`}}>
-                  <span style={{fontSize:12,background:T.surface,color:BRAND.magenta,borderRadius:6,padding:'2px 8px',fontWeight:600,border:`1px solid ${BRAND.magenta}28`,minWidth:76,textAlign:'center'}}>{f}</span>
-                  <span style={{fontSize:13,color:T.muted}}>{l}</span>
-                </div>
+          {/* Import type selector */}
+          <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:16,
+            padding:'16px 20px',marginBottom:14,boxShadow:`0 1px 4px ${T.shadow}`}}>
+            <SectionLabel text="What are you importing?" T={T}/>
+            <div style={{display:'flex',gap:8}}>
+              {[['inventory','Inventory Items','box'],['expenses','Expenses','receipt'],['mileage','Mileage','car']].map(([id,lbl,ic])=>(
+                <button key={id} onClick={()=>setImportType(id)} style={{
+                  background:importType===id?BRAND.yellow:T.surface,
+                  color:importType===id?'#111':T.muted,
+                  border:`1px solid ${importType===id?BRAND.yellow:T.border}`,
+                  borderRadius:10,padding:'8px 16px',fontSize:13,fontWeight:600,
+                  cursor:'pointer',fontFamily:"'Inter',sans-serif",
+                  display:'inline-flex',alignItems:'center',gap:7}}>
+                  <Icon name={ic} size={15} color={importType===id?'#111':T.muted}/>{lbl}
+                </button>
               ))}
             </div>
           </div>
-          <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:18,padding:'18px 22px',boxShadow:`0 1px 4px ${T.shadow}`}}>
-            <div style={{fontSize:11,fontWeight:700,color:T.muted,letterSpacing:.8,textTransform:'uppercase',marginBottom:12}}>Or Paste CSV Data</div>
-            <textarea rows={6} value={importText} onChange={e=>setImportText(e.target.value)} placeholder={'sku,title,category,cost,price\nRC-001,"My Item","Clothing",5.00,25.00\n...'} style={{background:T.inputBg,border:`1.5px solid ${T.border}`,borderRadius:10,color:T.text,padding:'10px 14px',fontSize:13,width:'100%',resize:'vertical',outline:'none',fontFamily:"'Inter',sans-serif"}}/>
-            {importMsg&&<div style={{background:T.success+'12',border:`1px solid ${T.success}28`,borderRadius:10,padding:'10px 14px',margin:'12px 0',fontSize:13,color:T.success,fontWeight:600}}>{importMsg}</div>}
-            <Btn ic="upload" T={T} full onClick={()=>{if(importText.trim()){const lines=importText.trim().split('\n');setImportMsg('✓ Parsed '+( lines.length-1)+' row'+(lines.length!==2?'s':'')+' — review and confirm to import.');}else{setImportMsg('');}}} style={{marginTop:12}}>
-              Parse & Preview
-            </Btn>
+
+          {/* Drag & Drop zone — fully wired */}
+          <div
+            onDragOver={onDragOver}
+            onDragEnter={onDragEnter}
+            onDragLeave={onDragLeave}
+            onDrop={onDrop}
+            onClick={()=>fileInputRef.current&&fileInputRef.current.click()}
+            style={{
+              border:`2px dashed ${dragOver?BRAND.yellow:T.border}`,
+              borderRadius:18,
+              padding:'40px 24px',
+              textAlign:'center',
+              marginBottom:16,
+              background:dragOver?BRAND.yellow+'0A':T.card,
+              cursor:'pointer',
+              transition:'all .15s',
+              boxShadow:`0 1px 4px ${T.shadow}`,
+            }}>
+            {/* Hidden file input */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv,.txt"
+              style={{display:'none'}}
+              onChange={e=>handleFile(e.target.files[0])}
+            />
+            <div style={{marginBottom:12,display:'flex',justifyContent:'center'}}>
+              <Icon name="upload" size={40} color={dragOver?BRAND.yellow:T.muted}
+                style={{opacity:dragOver?1:.5}}/>
+            </div>
+            <div style={{fontSize:16,fontWeight:700,
+              color:dragOver?BRAND.yellow:T.text,marginBottom:6}}>
+              {dragOver?'Drop your CSV file here!':'Drag & Drop CSV File'}
+            </div>
+            <div style={{fontSize:13,color:T.muted,marginBottom:14}}>
+              or click anywhere in this box to browse files
+            </div>
+            {importing&&(
+              <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:8,fontSize:13,color:T.cyan}}>
+                <Icon name="refresh" size={15} color={T.cyan} style={{animation:'spin 1s linear infinite'}}/>
+                Reading file…
+              </div>
+            )}
+          </div>
+
+          {/* Status / error message */}
+          {importMsg&&(
+            <div style={{
+              background:importMsg.startsWith('✓')||importMsg.startsWith('✅')?T.success+'12':T.danger+'12',
+              border:`1px solid ${importMsg.startsWith('✓')||importMsg.startsWith('✅')?T.success:T.danger}28`,
+              borderRadius:12,padding:'12px 16px',marginBottom:14,fontSize:14,fontWeight:600,
+              color:importMsg.startsWith('✓')||importMsg.startsWith('✅')?T.success:T.danger,
+              display:'flex',alignItems:'center',gap:10}}>
+              <Icon name={importMsg.startsWith('✓')||importMsg.startsWith('✅')?'checkCircle':'alert'}
+                size={18} color={importMsg.startsWith('✓')||importMsg.startsWith('✅')?T.success:T.danger}/>
+              {importMsg}
+            </div>
+          )}
+
+          {/* Preview table */}
+          {importRows&&importRows.length>0&&(
+            <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:16,
+              padding:'16px 20px',marginBottom:14,boxShadow:`0 1px 4px ${T.shadow}`}}>
+              <SectionLabel text={`Preview — ${importRows.length} rows detected`} T={T}/>
+              <div style={{maxHeight:220,overflowY:'auto',marginBottom:14}}>
+                {importRows.slice(0,8).map((row,i)=>(
+                  <div key={i} style={{display:'flex',gap:10,padding:'8px 0',
+                    borderBottom:`1px solid ${T.border}`,fontSize:13,flexWrap:'wrap'}}>
+                    <span style={{fontWeight:600,color:T.text,flex:'0 0 auto',maxWidth:200,
+                      overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                      {row.title||row.name||row.description||'(row '+(i+1)+')'}
+                    </span>
+                    {row.brand&&<span style={{color:T.muted}}>· {row.brand}</span>}
+                    {row.category&&<Badge text={row.category} color={T.cyan} T={T}/>}
+                    {(row.price||row.cost)&&<span style={{color:T.success,marginLeft:'auto'}}>
+                      ${row.price||row.cost}
+                    </span>}
+                  </div>
+                ))}
+                {importRows.length>8&&(
+                  <div style={{fontSize:12,color:T.muted,padding:'8px 0'}}>
+                    + {importRows.length-8} more rows…
+                  </div>
+                )}
+              </div>
+              <Btn icon="upload" T={T} style={{width:'100%'}} onClick={doImport}>
+                Import {importRows.length} {importType==='inventory'?'Items':importType==='expenses'?'Expenses':'Trips'} Now
+              </Btn>
+            </div>
+          )}
+
+          {/* Column guide */}
+          <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:16,
+            padding:'16px 20px',boxShadow:`0 1px 4px ${T.shadow}`}}>
+            <SectionLabel text="Expected CSV Column Names" T={T}/>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6}}>
+              {(importType==='inventory'
+                ?[['title','Item title (required)'],['sku','SKU / stock number'],
+                  ['category','Category'],['brand','Brand'],['cost','Purchase cost'],
+                  ['price','Listing price'],['status','Unlisted/Listed/Sold'],
+                  ['platform','eBay, Poshmark, etc'],['condition','New, Good, Fair…'],['location','Storage location']]
+                :importType==='expenses'
+                ?[['title','Description (required)'],['amount','Amount'],
+                  ['category','Category'],['date','Date (YYYY-MM-DD)'],
+                  ['recurring','Yes or No'],['notes','Notes']]
+                :[['from','Starting location'],['to','Destination'],
+                  ['miles','Miles driven'],['purpose','Sourcing, Shipping, etc'],
+                  ['date','Date (YYYY-MM-DD)'],['deduction','Deduction amount']]
+              ).map(([f,l])=>(
+                <div key={f} style={{display:'flex',gap:8,alignItems:'center',
+                  padding:'5px 0',borderBottom:`1px solid ${T.border}`}}>
+                  <span style={{fontSize:12,background:T.surface,color:BRAND.magenta,
+                    borderRadius:6,padding:'2px 8px',fontWeight:600,
+                    minWidth:80,textAlign:'center',flexShrink:0}}>{f}</span>
+                  <span style={{fontSize:12,color:T.muted}}>{l}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{fontSize:12,color:T.muted,marginTop:12,lineHeight:1.6}}>
+              Column names are case-insensitive. Extra columns are ignored.
+              First row must be the header row.
+            </div>
           </div>
         </div>
       )}
@@ -1429,16 +2063,14 @@ function ExportPage({inventory,expenses,mileage,T}){
   );
 }
 
-
-/* ── SETTINGS PAGE ─────────────────────────────────────────── */
 function SettingsPage({biz,setBiz,dark,setDark,T}){
   const [tab,setTab]=useState('business');
   const [saved,setSaved]=useState(false);
-  const [showInfo,setShowInfo]=useState(false);
   const fileRef=React.useRef(null);
 
   function update(k,v){setBiz(prev=>({...prev,[k]:v}));}
   function save(){setSaved(true);setTimeout(()=>setSaved(false),2500);}
+
   function handleLogoUpload(e){
     const file=e.target.files[0];
     if(!file)return;
@@ -1446,104 +2078,229 @@ function SettingsPage({biz,setBiz,dark,setDark,T}){
     reader.onload=ev=>update('logo',ev.target.result);
     reader.readAsDataURL(file);
   }
-  function removeLogo(){update('logo',null);}
+
+  /* Reusable inline select — uses only existing T props */
+  function Sel({label,value,onChange,options}){
+    return(
+      <div style={{marginBottom:14}}>
+        {label&&<div style={{fontSize:12,fontWeight:600,color:T.muted,marginBottom:6}}>{label}</div>}
+        <select
+          value={value}
+          onChange={e=>onChange(e.target.value)}
+          style={{width:'100%',background:T.inputBg,border:`1.5px solid ${T.border}`,
+            borderRadius:10,color:T.text,padding:'10px 14px',fontSize:14,
+            fontFamily:"'Inter',sans-serif",outline:'none',cursor:'pointer'}}>
+          {options.map(o=>(
+            <option key={Array.isArray(o)?o[0]:o} value={Array.isArray(o)?o[0]:o}>
+              {Array.isArray(o)?o[1]:o}
+            </option>
+          ))}
+        </select>
+      </div>
+    );
+  }
+
+  /* Reusable textarea */
+  function TextArea({label,value,onChange,rows=3,placeholder=''}){
+    return(
+      <div style={{marginBottom:14}}>
+        {label&&<div style={{fontSize:12,fontWeight:600,color:T.muted,marginBottom:6}}>{label}</div>}
+        <textarea
+          rows={rows}
+          value={value||''}
+          onChange={e=>onChange(e.target.value)}
+          placeholder={placeholder}
+          style={{width:'100%',background:T.inputBg,border:`1.5px solid ${T.border}`,
+            borderRadius:10,color:T.text,padding:'10px 14px',fontSize:14,resize:'vertical',
+            fontFamily:"'Inter',sans-serif",outline:'none'}}/>
+      </div>
+    );
+  }
 
   const TABS=[
-    {id:'business',label:'Business Profile',icon:'building'},
-    {id:'contact',label:'Contact & Address',icon:'mappin'},
-    {id:'billing',label:'Billing & Tax',icon:'dollar'},
-    {id:'preferences',label:'Preferences',icon:'settings'},
-    {id:'about',label:'About & Help',icon:'info'},
+    {id:'business', label:'Business Profile', icon:'building'},
+    {id:'contact',  label:'Contact & Address',icon:'mappin'},
+    {id:'billing',  label:'Billing & Tax',    icon:'dollar'},
+    {id:'prefs',    label:'Preferences',      icon:'settings'},
+    {id:'about',    label:'About & Help',     icon:'info'},
   ];
 
+  const card={background:T.card,border:`1px solid ${T.border}`,borderRadius:18,
+    padding:'22px 24px',boxShadow:`0 1px 4px ${T.shadow}`,marginBottom:14};
+  const sectionTitle={fontSize:11,fontWeight:700,color:T.muted,letterSpacing:.8,
+    textTransform:'uppercase',marginBottom:16};
+
+  const bizSafe={
+    name:'',tagline:'',ownerName:'',email:'',phone:'',address:'',
+    city:'',state:'',zip:'',country:'US',website:'',taxId:'',logo:null,
+    currency:'USD',mileageRate:0.59,timezone:'America/New_York',
+    businessType:'',yearsInBusiness:'',description:'',resellerPermit:'',
+    taxRate:'',paymentTerms:'',paymentMethods:'',poPrefix:'PO',poNextNum:'1001',
+    poNotes:'',platforms:['eBay','Poshmark','Mercari'],
+    ...(biz||{})
+  };
+
   return(
-    <div className="pe" style={{padding:'24px 28px',overflowY:'auto',flex:1}}>
+    <div style={{padding:'24px 28px',overflowY:'auto',flex:1}}>
+      {/* Header */}
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:22}}>
         <div>
           <div style={{fontSize:26,fontWeight:800,color:T.text,letterSpacing:-0.5}}>Settings</div>
-          <div style={{fontSize:13,color:T.muted,marginTop:3}}>Customize your business profile and app preferences</div>
+          <div style={{fontSize:13,color:T.muted,marginTop:3}}>
+            Customize your business profile and app preferences
+          </div>
         </div>
         <div style={{display:'flex',gap:10,alignItems:'center'}}>
-          {saved&&<div style={{background:T.success+'18',border:`1px solid ${T.success}28`,borderRadius:10,padding:'8px 14px',fontSize:13,color:T.success,fontWeight:600,display:'flex',alignItems:'center',gap:6}}>
-            <Icon name="checkCircle" size={14} color={T.success}/> Saved!
-          </div>}
-          <Btn ic="check" T={T} onClick={save}>Save Changes</Btn>
+          {saved&&(
+            <div style={{background:T.success+'18',border:`1px solid ${T.success}40`,
+              borderRadius:10,padding:'8px 14px',fontSize:13,color:T.success,
+              fontWeight:600,display:'flex',alignItems:'center',gap:6}}>
+              <Icon name="checkCircle" size={14} color={T.success}/> Saved!
+            </div>
+          )}
+          <Btn icon="check" T={T} onClick={save}>Save Changes</Btn>
         </div>
       </div>
 
-      <div style={{display:'flex',gap:20}}>
-        {/* Sidebar tabs */}
-        <div style={{width:210,flexShrink:0}}>
-          <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:16,overflow:'hidden',boxShadow:`0 1px 4px ${T.shadow}`}}>
+      <div style={{display:'flex',gap:20,alignItems:'flex-start'}}>
+
+        {/* ── Left tab list ── */}
+        <div style={{width:200,flexShrink:0}}>
+          <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:16,
+            overflow:'hidden',boxShadow:`0 1px 4px ${T.shadow}`}}>
             {TABS.map((t,i)=>(
-              <button key={t.id} onClick={()=>setTab(t.id)} style={{width:'100%',background:tab===t.id?BRAND.yellow+'18':'transparent',border:'none',padding:'13px 16px',fontSize:14,fontWeight:tab===t.id?700:500,color:tab===t.id?BRAND.yellow:T.muted,cursor:'pointer',display:'flex',alignItems:'center',gap:10,fontFamily:"'Inter',sans-serif",textAlign:'left',borderBottom:i<TABS.length-1?`1px solid ${T.border}`:'none',boxShadow:tab===t.id?`inset 3px 0 0 ${BRAND.yellow}`:'none',transition:'all .14s'}}>
-                <Icon name={t.icon} size={16} color={tab===t.id?BRAND.yellow:T.muted}/>{t.label}
+              <button
+                key={t.id}
+                onClick={()=>setTab(t.id)}
+                style={{
+                  width:'100%',background:tab===t.id?BRAND.yellow+'1A':'transparent',
+                  border:'none',
+                  borderBottom:i<TABS.length-1?`1px solid ${T.border}`:'none',
+                  padding:'13px 16px',fontSize:13,fontWeight:tab===t.id?700:500,
+                  color:tab===t.id?BRAND.yellow:T.muted,
+                  cursor:'pointer',display:'flex',alignItems:'center',gap:10,
+                  fontFamily:"'Inter',sans-serif",textAlign:'left',
+                  boxShadow:tab===t.id?`inset 3px 0 0 ${BRAND.yellow}`:'none',
+                  transition:'all .14s',
+                }}>
+                <Icon name={t.icon} size={15} color={tab===t.id?BRAND.yellow:T.muted}/>
+                {t.label}
               </button>
             ))}
           </div>
         </div>
 
-        {/* Content area */}
+        {/* ── Right content ── */}
         <div style={{flex:1,minWidth:0}}>
 
-          {/* ── BUSINESS PROFILE TAB ── */}
+          {/* ══ BUSINESS PROFILE ══ */}
           {tab==='business'&&(
-            <div style={{display:'flex',flexDirection:'column',gap:14}}>
-              {/* Logo upload */}
-              <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:18,padding:'22px 24px',boxShadow:`0 1px 4px ${T.shadow}`}}>
-                <div style={{fontSize:11,fontWeight:700,color:T.muted,letterSpacing:.8,textTransform:'uppercase',marginBottom:16}}>Company Logo</div>
+            <div>
+              {/* Logo */}
+              <div style={card}>
+                <div style={sectionTitle}>Company Logo</div>
                 <div style={{display:'flex',alignItems:'center',gap:20,flexWrap:'wrap'}}>
-                  <div style={{width:90,height:90,borderRadius:18,background:biz.logo?'transparent':T.surface,border:`2px dashed ${biz.logo?BRAND.yellow:T.border}`,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden',flexShrink:0,cursor:'pointer'}} onClick={()=>fileRef.current&&fileRef.current.click()}>
-                    {biz.logo
-                      ?<img src={biz.logo} alt="logo" style={{width:'100%',height:'100%',objectFit:'contain'}}/>
-                      :<div style={{textAlign:'center',padding:8}}><Icon name="imgIcon" size={28} color={T.muted}/><div style={{fontSize:10,color:T.muted,marginTop:4}}>Click to upload</div></div>
+                  <div
+                    onClick={()=>fileRef.current&&fileRef.current.click()}
+                    style={{width:90,height:90,borderRadius:16,flexShrink:0,cursor:'pointer',
+                      overflow:'hidden',display:'flex',alignItems:'center',justifyContent:'center',
+                      background:bizSafe.logo?'transparent':T.surface,
+                      border:`2px dashed ${bizSafe.logo?BRAND.yellow:T.border}`}}>
+                    {bizSafe.logo
+                      ?<img src={bizSafe.logo} alt="logo"
+                          style={{width:'100%',height:'100%',objectFit:'contain'}}/>
+                      :<div style={{textAlign:'center'}}>
+                        <Icon name="imgIcon" size={26} color={T.muted}/>
+                        <div style={{fontSize:10,color:T.muted,marginTop:4}}>Upload</div>
+                      </div>
                     }
                   </div>
-                  <div>
-                    <div style={{fontSize:14,fontWeight:600,color:T.text,marginBottom:6}}>{biz.logo?'Logo uploaded':'No logo yet'}</div>
-                    <div style={{fontSize:12,color:T.muted,marginBottom:12}}>Supports PNG, JPG, SVG · Recommended 200×200px or larger · Will appear in topbar, labels, and purchase orders</div>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:14,fontWeight:600,color:T.text,marginBottom:4}}>
+                      {bizSafe.logo?'Logo uploaded ✓':'No logo yet'}
+                    </div>
+                    <div style={{fontSize:12,color:T.muted,marginBottom:12}}>
+                      PNG, JPG, or SVG · Appears in topbar, labels &amp; purchase orders
+                    </div>
+                    <input ref={fileRef} type="file" accept="image/*"
+                      style={{display:'none'}} onChange={handleLogoUpload}/>
                     <div style={{display:'flex',gap:8}}>
-                      <input ref={fileRef} type="file" accept="image/*" style={{display:'none'}} onChange={handleLogoUpload}/>
-                      <Btn sm v="ghost" T={T} ic="upload" onClick={()=>fileRef.current&&fileRef.current.click()}>{biz.logo?'Change Logo':'Upload Logo'}</Btn>
-                      {biz.logo&&<Btn sm v="danger" T={T} ic="trash" onClick={removeLogo}>Remove</Btn>}
+                      <Btn small icon="upload" variant="ghost" T={T}
+                        onClick={()=>fileRef.current&&fileRef.current.click()}>
+                        {bizSafe.logo?'Change':'Upload Logo'}
+                      </Btn>
+                      {bizSafe.logo&&(
+                        <Btn small icon="trash" variant="danger" T={T}
+                          onClick={()=>update('logo',null)}>
+                          Remove
+                        </Btn>
+                      )}
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* Business name & details */}
-              <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:18,padding:'22px 24px',boxShadow:`0 1px 4px ${T.shadow}`}}>
-                <div style={{fontSize:11,fontWeight:700,color:T.muted,letterSpacing:.8,textTransform:'uppercase',marginBottom:16}}>Business Information</div>
-                <Fld label="Business / Shop Name" value={biz.name} onChange={v=>update('name',v)} T={T} ph="e.g. Retro Replay Hub"/>
-                <Fld label="Tagline / Slogan" value={biz.tagline} onChange={v=>update('tagline',v)} T={T} ph="e.g. Games • Movies • Music • Fashion"/>
-                <Fld label="Owner / Contact Name" value={biz.ownerName} onChange={v=>update('ownerName',v)} T={T} ph="Your full name"/>
+              {/* Business info */}
+              <div style={card}>
+                <div style={sectionTitle}>Business Information</div>
+                <Field label="Business / Shop Name" value={bizSafe.name}
+                  onChange={v=>update('name',v)} T={T}/>
+                <Field label="Tagline / Slogan" value={bizSafe.tagline}
+                  onChange={v=>update('tagline',v)} T={T}/>
+                <Field label="Owner / Contact Name" value={bizSafe.ownerName}
+                  onChange={v=>update('ownerName',v)} T={T}/>
                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
-                  <Fld label="Business Type" value={biz.businessType||''} onChange={v=>update('businessType',v)} T={T} ph="e.g. Sole Proprietor, LLC"/>
-                  <Fld label="Years in Business" value={biz.yearsInBusiness||''} onChange={v=>update('yearsInBusiness',v)} T={T} ph="e.g. 3"/>
+                  <Field label="Business Type" value={bizSafe.businessType}
+                    onChange={v=>update('businessType',v)} T={T}/>
+                  <Field label="Years in Business" value={bizSafe.yearsInBusiness}
+                    onChange={v=>update('yearsInBusiness',v)} T={T}/>
                 </div>
-                <Fld label="Business Description" value={biz.description||''} onChange={v=>update('description',v)} T={T} rows={3} ph="Describe what you sell and where you source inventory…"/>
+                <TextArea label="Business Description" value={bizSafe.description}
+                  onChange={v=>update('description',v)}
+                  placeholder="Describe what you sell and where you source inventory…"/>
               </div>
 
-              {/* Preview card */}
-              <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:18,padding:'22px 24px',boxShadow:`0 1px 4px ${T.shadow}`}}>
-                <div style={{fontSize:11,fontWeight:700,color:T.muted,letterSpacing:.8,textTransform:'uppercase',marginBottom:16}}>Purchase Order Header Preview</div>
-                <div style={{background:T.surface,borderRadius:14,padding:'20px 24px',border:`1px solid ${T.border}`}}>
-                  <div style={{display:'flex',alignItems:'center',gap:16,marginBottom:14,paddingBottom:14,borderBottom:`1px solid ${T.border}`}}>
-                    <div style={{width:56,height:56,borderRadius:12,background:biz.logo?'transparent':`linear-gradient(135deg,${BRAND.yellow},${BRAND.magenta})`,border:`1px solid ${T.border}`,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden',flexShrink:0}}>
-                      {biz.logo?<img src={biz.logo} alt="logo" style={{width:'100%',height:'100%',objectFit:'contain'}}/>:<span style={{fontSize:20,fontWeight:900,color:'#111'}}>{biz.name.charAt(0)}</span>}
+              {/* PO Preview */}
+              <div style={card}>
+                <div style={sectionTitle}>Purchase Order Header Preview</div>
+                <div style={{background:T.surface,borderRadius:14,padding:'20px 22px',
+                  border:`1px solid ${T.border}`}}>
+                  <div style={{display:'flex',alignItems:'center',gap:14,
+                    paddingBottom:14,marginBottom:14,borderBottom:`1px solid ${T.border}`}}>
+                    <div style={{width:52,height:52,borderRadius:12,overflow:'hidden',flexShrink:0,
+                      background:bizSafe.logo?'transparent':`linear-gradient(135deg,${BRAND.yellow},${BRAND.magenta})`,
+                      display:'flex',alignItems:'center',justifyContent:'center'}}>
+                      {bizSafe.logo
+                        ?<img src={bizSafe.logo} alt="logo"
+                            style={{width:'100%',height:'100%',objectFit:'contain'}}/>
+                        :<span style={{fontSize:22,fontWeight:900,color:'#111'}}>
+                          {(bizSafe.name||'R').charAt(0)}
+                        </span>
+                      }
                     </div>
-                    <div>
-                      <div style={{fontSize:18,fontWeight:800,color:T.text}}>{biz.name||'My Reseller Shop'}</div>
-                      {biz.tagline&&<div style={{fontSize:12,color:T.muted,marginTop:2}}>{biz.tagline}</div>}
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:17,fontWeight:800,color:T.text}}>
+                        {bizSafe.name||'Your Business Name'}
+                      </div>
+                      {bizSafe.tagline&&(
+                        <div style={{fontSize:12,color:T.muted,marginTop:2}}>{bizSafe.tagline}</div>
+                      )}
                     </div>
-                    <div style={{marginLeft:'auto',textAlign:'right'}}>
-                      <div style={{fontSize:11,color:T.muted}}>PURCHASE ORDER</div>
-                      <div style={{fontSize:15,fontWeight:700,color:BRAND.yellow}}>#PO-2026-001</div>
+                    <div style={{textAlign:'right'}}>
+                      <div style={{fontSize:10,color:T.muted,letterSpacing:.8}}>PURCHASE ORDER</div>
+                      <div style={{fontSize:14,fontWeight:700,color:BRAND.yellow}}>
+                        #{bizSafe.poPrefix||'PO'}-{bizSafe.poNextNum||'1001'}
+                      </div>
                     </div>
                   </div>
-                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,fontSize:12}}>
-                    {[['Owner',biz.ownerName||'—'],['Email',biz.email||'—'],['Phone',biz.phone||'—'],['Website',biz.website||'—']].map(([l,v])=>(
-                      <div key={l}><span style={{color:T.muted}}>{l}: </span><span style={{color:T.text,fontWeight:500}}>{v}</span></div>
+                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6,fontSize:12}}>
+                    {[
+                      ['Owner',bizSafe.ownerName],['Email',bizSafe.email],
+                      ['Phone',bizSafe.phone],['Website',bizSafe.website],
+                    ].map(([l,v])=>(
+                      <div key={l} style={{color:T.muted}}>
+                        {l}: <span style={{color:T.text,fontWeight:500}}>{v||'—'}</span>
+                      </div>
                     ))}
                   </div>
                 </div>
@@ -1551,187 +2308,287 @@ function SettingsPage({biz,setBiz,dark,setDark,T}){
             </div>
           )}
 
-          {/* ── CONTACT & ADDRESS TAB ── */}
+          {/* ══ CONTACT & ADDRESS ══ */}
           {tab==='contact'&&(
-            <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:18,padding:'22px 24px',boxShadow:`0 1px 4px ${T.shadow}`}}>
-              <div style={{fontSize:11,fontWeight:700,color:T.muted,letterSpacing:.8,textTransform:'uppercase',marginBottom:16}}>Contact Information</div>
-              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
-                <Fld label="Email Address" value={biz.email} onChange={v=>update('email',v)} T={T} ph="hello@myshop.com" type="email"/>
-                <Fld label="Phone Number" value={biz.phone} onChange={v=>update('phone',v)} T={T} ph="+1 (555) 000-0000" type="tel"/>
+            <div>
+              <div style={card}>
+                <div style={sectionTitle}>Contact Information</div>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+                  <Field label="Email Address" value={bizSafe.email}
+                    onChange={v=>update('email',v)} type="email" T={T}/>
+                  <Field label="Phone Number" value={bizSafe.phone}
+                    onChange={v=>update('phone',v)} type="tel" T={T}/>
+                </div>
+                <Field label="Website / Store URL" value={bizSafe.website}
+                  onChange={v=>update('website',v)} T={T}/>
               </div>
-              <Fld label="Website / Store URL" value={biz.website} onChange={v=>update('website',v)} T={T} ph="https://myshop.com"/>
-              <div style={{marginTop:8,marginBottom:16,height:1,background:T.border}}/>
-              <div style={{fontSize:11,fontWeight:700,color:T.muted,letterSpacing:.8,textTransform:'uppercase',marginBottom:16}}>Business Address</div>
-              <Fld label="Street Address" value={biz.address} onChange={v=>update('address',v)} T={T} ph="123 Main Street, Suite 4"/>
-              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 120px',gap:12}}>
-                <Fld label="City" value={biz.city} onChange={v=>update('city',v)} T={T} ph="Grand Rapids"/>
-                <Fld label="State / Province" value={biz.state} onChange={v=>update('state',v)} T={T} ph="MI"/>
-                <Fld label="ZIP / Postal" value={biz.zip} onChange={v=>update('zip',v)} T={T} ph="49503"/>
-              </div>
-              <Fld label="Country" value={biz.country} onChange={v=>update('country',v)} T={T} ph="US"/>
-              <div style={{background:T.cyan+'10',border:`1px solid ${T.cyan}28`,borderRadius:12,padding:'12px 16px',fontSize:13,color:T.text,display:'flex',alignItems:'center',gap:10,marginTop:4}}>
-                <Icon name="info" size={16} color={T.cyan}/>
-                Your address will appear on Purchase Orders, invoices, and exported reports.
+              <div style={card}>
+                <div style={sectionTitle}>Business Address</div>
+                <Field label="Street Address" value={bizSafe.address}
+                  onChange={v=>update('address',v)} T={T}/>
+                <div style={{display:'grid',gridTemplateColumns:'2fr 1fr 1fr',gap:12}}>
+                  <Field label="City" value={bizSafe.city}
+                    onChange={v=>update('city',v)} T={T}/>
+                  <Field label="State" value={bizSafe.state}
+                    onChange={v=>update('state',v)} T={T}/>
+                  <Field label="ZIP" value={bizSafe.zip}
+                    onChange={v=>update('zip',v)} T={T}/>
+                </div>
+                <Field label="Country" value={bizSafe.country}
+                  onChange={v=>update('country',v)} T={T}/>
+                <div style={{background:T.cyan+'0F',border:`1px solid ${T.cyan}28`,
+                  borderRadius:10,padding:'10px 14px',fontSize:13,color:T.text,
+                  display:'flex',alignItems:'center',gap:8,marginTop:4}}>
+                  <Icon name="info" size={15} color={T.cyan}/>
+                  Address appears on Purchase Orders and exported reports.
+                </div>
               </div>
             </div>
           )}
 
-          {/* ── BILLING & TAX TAB ── */}
+          {/* ══ BILLING & TAX ══ */}
           {tab==='billing'&&(
-            <div style={{display:'flex',flexDirection:'column',gap:14}}>
-              <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:18,padding:'22px 24px',boxShadow:`0 1px 4px ${T.shadow}`}}>
-                <div style={{fontSize:11,fontWeight:700,color:T.muted,letterSpacing:.8,textTransform:'uppercase',marginBottom:16}}>Tax Information</div>
+            <div>
+              <div style={card}>
+                <div style={sectionTitle}>Tax Information</div>
                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
-                  <Fld label="Tax ID / EIN" value={biz.taxId} onChange={v=>update('taxId',v)} T={T} ph="XX-XXXXXXX"/>
-                  <Fld label="Sales Tax Rate (%)" value={biz.taxRate||''} onChange={v=>update('taxRate',v)} T={T} ph="6.0" type="number"/>
+                  <Field label="Tax ID / EIN" value={bizSafe.taxId}
+                    onChange={v=>update('taxId',v)} T={T}/>
+                  <Field label="Sales Tax Rate (%)" value={bizSafe.taxRate}
+                    onChange={v=>update('taxRate',v)} type="number" T={T}/>
                 </div>
-                <Fld label="Reseller Permit Number" value={biz.resellerPermit||''} onChange={v=>update('resellerPermit',v)} T={T} ph="Optional — for purchase exemption certificates"/>
+                <Field label="Reseller Permit Number" value={bizSafe.resellerPermit}
+                  onChange={v=>update('resellerPermit',v)} T={T}/>
               </div>
-              <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:18,padding:'22px 24px',boxShadow:`0 1px 4px ${T.shadow}`}}>
-                <div style={{fontSize:11,fontWeight:700,color:T.muted,letterSpacing:.8,textTransform:'uppercase',marginBottom:16}}>Payment & Currency</div>
+              <div style={card}>
+                <div style={sectionTitle}>Currency & Payment</div>
                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
-                  <Sel label="Currency" value={biz.currency} onChange={v=>update('currency',v)} opts={['USD','EUR','GBP','CAD','AUD','JPY','MXN']} T={T}/>
-                  <Fld label="Payment Terms" value={biz.paymentTerms||''} onChange={v=>update('paymentTerms',v)} T={T} ph="e.g. Net 30, Due on Receipt"/>
+                  <Sel label="Currency" value={bizSafe.currency}
+                    onChange={v=>update('currency',v)}
+                    options={['USD','EUR','GBP','CAD','AUD','JPY','MXN']}/>
+                  <Field label="Payment Terms" value={bizSafe.paymentTerms}
+                    onChange={v=>update('paymentTerms',v)} T={T}/>
                 </div>
-                <Fld label="Payment Methods Accepted" value={biz.paymentMethods||''} onChange={v=>update('paymentMethods',v)} T={T} ph="e.g. PayPal, Venmo, Cash, Check"/>
+                <Field label="Payment Methods Accepted" value={bizSafe.paymentMethods}
+                  onChange={v=>update('paymentMethods',v)} T={T}/>
               </div>
-              <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:18,padding:'22px 24px',boxShadow:`0 1px 4px ${T.shadow}`}}>
-                <div style={{fontSize:11,fontWeight:700,color:T.muted,letterSpacing:.8,textTransform:'uppercase',marginBottom:16}}>Purchase Order Settings</div>
+              <div style={card}>
+                <div style={sectionTitle}>Purchase Order Settings</div>
                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
-                  <Fld label="PO Number Prefix" value={biz.poPrefix||'PO'} onChange={v=>update('poPrefix',v)} T={T} ph="PO"/>
-                  <Fld label="Next PO Number" value={biz.poNextNum||'1001'} onChange={v=>update('poNextNum',v)} T={T} ph="1001" type="number"/>
+                  <Field label="PO Number Prefix" value={bizSafe.poPrefix}
+                    onChange={v=>update('poPrefix',v)} T={T}/>
+                  <Field label="Next PO Number" value={bizSafe.poNextNum}
+                    onChange={v=>update('poNextNum',v)} type="number" T={T}/>
                 </div>
-                <Fld label="PO Notes / Terms" value={biz.poNotes||''} onChange={v=>update('poNotes',v)} T={T} rows={3} ph="Standard terms and conditions that appear on every purchase order…"/>
+                <TextArea label="PO Notes / Terms" value={bizSafe.poNotes}
+                  onChange={v=>update('poNotes',v)} rows={3}
+                  placeholder="Standard terms printed on every PO…"/>
               </div>
             </div>
           )}
 
-          {/* ── PREFERENCES TAB ── */}
-          {tab==='preferences'&&(
-            <div style={{display:'flex',flexDirection:'column',gap:14}}>
-              <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:18,padding:'22px 24px',boxShadow:`0 1px 4px ${T.shadow}`}}>
-                <div style={{fontSize:11,fontWeight:700,color:T.muted,letterSpacing:.8,textTransform:'uppercase',marginBottom:16}}>Appearance</div>
-                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'14px 0',borderBottom:`1px solid ${T.border}`}}>
+          {/* ══ PREFERENCES ══ */}
+          {tab==='prefs'&&(
+            <div>
+              {/* Dark mode */}
+              <div style={card}>
+                <div style={sectionTitle}>Appearance</div>
+                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',
+                  padding:'12px 0',borderBottom:`1px solid ${T.border}`}}>
                   <div>
                     <div style={{fontSize:14,fontWeight:600,color:T.text}}>Dark Mode</div>
-                    <div style={{fontSize:12,color:T.muted,marginTop:2}}>Switch between dark and light interface</div>
+                    <div style={{fontSize:12,color:T.muted,marginTop:2}}>
+                      Switch between dark and light interface
+                    </div>
                   </div>
-                  <button onClick={()=>setDark(!dark)} style={{width:52,height:28,borderRadius:20,background:dark?BRAND.yellow:T.surface,border:`2px solid ${dark?BRAND.yellow:T.border}`,cursor:'pointer',position:'relative',transition:'all .2s',flexShrink:0}}>
-                    <div style={{width:20,height:20,borderRadius:'50%',background:dark?'#111':'#fff',position:'absolute',top:2,left:dark?28:2,transition:'left .2s',boxShadow:'0 1px 3px rgba(0,0,0,.3)'}}/>
+                  <button
+                    onClick={()=>setDark(!dark)}
+                    style={{width:52,height:28,borderRadius:20,position:'relative',
+                      background:dark?BRAND.yellow:T.surface,
+                      border:`2px solid ${dark?BRAND.yellow:T.border}`,
+                      cursor:'pointer',transition:'all .2s',flexShrink:0}}>
+                    <div style={{width:20,height:20,borderRadius:'50%',position:'absolute',
+                      top:2,left:dark?28:2,transition:'left .2s',
+                      background:dark?'#111':'#fff',
+                      boxShadow:'0 1px 3px rgba(0,0,0,.3)'}}/>
                   </button>
                 </div>
-                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'14px 0'}}>
-                  <div>
-                    <div style={{fontSize:14,fontWeight:600,color:T.text}}>Collapsed Sidebar by Default</div>
-                    <div style={{fontSize:12,color:T.muted,marginTop:2}}>Start with icon-only sidebar for more screen space</div>
-                  </div>
-                  <div style={{width:52,height:28,borderRadius:20,background:T.surface,border:`2px solid ${T.border}`,cursor:'pointer',position:'relative',flexShrink:0}}>
-                    <div style={{width:20,height:20,borderRadius:'50%',background:'#fff',position:'absolute',top:2,left:2,boxShadow:'0 1px 3px rgba(0,0,0,.3)'}}/>
-                  </div>
-                </div>
               </div>
-              <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:18,padding:'22px 24px',boxShadow:`0 1px 4px ${T.shadow}`}}>
-                <div style={{fontSize:11,fontWeight:700,color:T.muted,letterSpacing:.8,textTransform:'uppercase',marginBottom:16}}>Mileage & Calculations</div>
+
+              {/* Mileage rate */}
+              <div style={card}>
+                <div style={sectionTitle}>Mileage & Calculations</div>
                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
-                  <Fld label="IRS Mileage Rate ($/mi)" value={biz.mileageRate} onChange={v=>update('mileageRate',parseFloat(v)||0.59)} T={T} ph="0.59" type="number"/>
-                  <Sel label="Timezone" value={biz.timezone||'America/New_York'} onChange={v=>update('timezone',v)} opts={['America/New_York','America/Chicago','America/Denver','America/Los_Angeles','America/Anchorage','Pacific/Honolulu']} T={T}/>
+                  <Field label="IRS Mileage Rate ($/mile)" value={String(bizSafe.mileageRate)}
+                    onChange={v=>update('mileageRate',parseFloat(v)||0.59)}
+                    type="number" prefix="$" T={T}/>
+                  <Sel label="Timezone" value={bizSafe.timezone}
+                    onChange={v=>update('timezone',v)}
+                    options={[
+                      ['America/New_York','Eastern (ET)'],
+                      ['America/Chicago','Central (CT)'],
+                      ['America/Denver','Mountain (MT)'],
+                      ['America/Los_Angeles','Pacific (PT)'],
+                      ['America/Anchorage','Alaska (AKT)'],
+                      ['Pacific/Honolulu','Hawaii (HST)'],
+                    ]}/>
                 </div>
               </div>
-              <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:18,padding:'22px 24px',boxShadow:`0 1px 4px ${T.shadow}`}}>
-                <div style={{fontSize:11,fontWeight:700,color:T.muted,letterSpacing:.8,textTransform:'uppercase',marginBottom:16}}>Default Marketplace Platforms</div>
-                <div style={{fontSize:13,color:T.muted,marginBottom:14}}>Select the platforms you actively sell on to streamline dropdowns throughout the app.</div>
+
+              {/* Active platforms */}
+              <div style={card}>
+                <div style={sectionTitle}>Active Marketplace Platforms</div>
+                <div style={{fontSize:13,color:T.muted,marginBottom:14}}>
+                  Platforms you actively sell on — shown first in dropdowns throughout the app.
+                </div>
                 <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-                  {['eBay','Poshmark','Mercari','Etsy','FB Marketplace','Whatnot','Craigslist','Amazon','Depop'].map(p=>{
-                    const enabled=(biz.platforms||['eBay','Poshmark','Mercari']).includes(p);
+                  {['eBay','Poshmark','Mercari','Etsy','FB Marketplace',
+                    'Whatnot','Craigslist','Amazon','Depop'].map(p=>{
+                    const active=(bizSafe.platforms||[]).includes(p);
                     return(
-                      <button key={p} onClick={()=>{const curr=biz.platforms||['eBay','Poshmark','Mercari'];update('platforms',enabled?curr.filter(x=>x!==p):[...curr,p]);}} style={{background:enabled?BRAND.yellow:T.surface,color:enabled?'#111':T.muted,border:`1px solid ${enabled?BRAND.yellow:T.border}`,borderRadius:20,padding:'6px 14px',fontSize:13,fontWeight:600,cursor:'pointer',fontFamily:"'Inter',sans-serif",transition:'all .14s'}}>{p}</button>
+                      <button key={p} onClick={()=>{
+                        const curr=bizSafe.platforms||[];
+                        update('platforms',active?curr.filter(x=>x!==p):[...curr,p]);
+                      }} style={{
+                        background:active?BRAND.yellow:T.surface,
+                        color:active?'#111':T.muted,
+                        border:`1px solid ${active?BRAND.yellow:T.border}`,
+                        borderRadius:20,padding:'6px 14px',fontSize:13,fontWeight:600,
+                        cursor:'pointer',fontFamily:"'Inter',sans-serif",transition:'all .14s',
+                      }}>{p}</button>
                     );
                   })}
                 </div>
               </div>
-              <div style={{background:T.danger+'10',border:`1px solid ${T.danger}28`,borderRadius:18,padding:'22px 24px'}}>
-                <div style={{fontSize:11,fontWeight:700,color:T.danger,letterSpacing:.8,textTransform:'uppercase',marginBottom:12}}>Danger Zone</div>
+
+              {/* Danger zone */}
+              <div style={{...card,background:T.danger+'0A',border:`1px solid ${T.danger}28`}}>
+                <div style={{...sectionTitle,color:T.danger}}>Danger Zone</div>
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                  <div><div style={{fontSize:14,fontWeight:600,color:T.text}}>Reset All Settings</div><div style={{fontSize:12,color:T.muted,marginTop:2}}>Revert all business profile settings to defaults. Inventory data is not affected.</div></div>
-                  <Btn sm v="danger" T={T} ic="trash" onClick={()=>{if(window.confirm('Reset all settings to defaults?')){setBiz({name:'My Reseller Shop',tagline:'Games • Movies • Music • Fashion',ownerName:'',email:'',phone:'',address:'',city:'',state:'',zip:'',country:'US',website:'',taxId:'',logo:null,currency:'USD',mileageRate:0.59,timezone:'America/New_York'});}}}>Reset</Btn>
+                  <div>
+                    <div style={{fontSize:14,fontWeight:600,color:T.text}}>Reset All Settings</div>
+                    <div style={{fontSize:12,color:T.muted,marginTop:2}}>
+                      Revert business profile to defaults. Inventory data is NOT affected.
+                    </div>
+                  </div>
+                  <Btn small icon="trash" variant="danger" T={T}
+                    onClick={()=>{
+                      if(window.confirm('Reset all settings to defaults?')){
+                        setBiz({
+                          name:'Retro Replay Hub',
+                          tagline:'Games • Movies • Music • Fashion',
+                          ownerName:'',email:'',phone:'',address:'',city:'',state:'',
+                          zip:'',country:'US',website:'',taxId:'',logo:null,
+                          currency:'USD',mileageRate:0.59,timezone:'America/New_York',
+                          businessType:'',yearsInBusiness:'',description:'',
+                          resellerPermit:'',taxRate:'',paymentTerms:'',paymentMethods:'',
+                          poPrefix:'PO',poNextNum:'1001',poNotes:'',
+                          platforms:['eBay','Poshmark','Mercari'],
+                        });
+                        save();
+                      }
+                    }}>
+                    Reset
+                  </Btn>
                 </div>
               </div>
             </div>
           )}
 
-          {/* ── ABOUT & HELP TAB ── */}
+          {/* ══ ABOUT & HELP ══ */}
           {tab==='about'&&(
-            <div style={{display:'flex',flexDirection:'column',gap:14}}>
-              {/* App info card */}
-              <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:18,padding:'28px 26px',boxShadow:`0 1px 4px ${T.shadow}`,textAlign:'center'}}>
-                <div style={{marginBottom:16,display:'flex',justifyContent:'center'}}>
-                  <LogoSVG size={52}/>
+            <div>
+              <div style={{...card,textAlign:'center',padding:'32px 28px'}}>
+                <div style={{display:'flex',justifyContent:'center',marginBottom:18}}>
+                  <LogoSVG size={56}/>
                 </div>
-                <div style={{fontSize:20,fontWeight:800,color:T.text,marginBottom:4}}>Retro Replay Hub</div>
-                <div style={{fontSize:14,fontWeight:500,color:T.muted,marginBottom:4}}>The Free Reseller Management Platform</div>
-                <div style={{fontSize:13,color:T.muted,marginBottom:16}}>Version 1.0.0 · Single-file web app · No installation required</div>
+                <div style={{fontSize:20,fontWeight:800,color:T.text,marginBottom:4}}>
+                  Retro Replay Hub
+                </div>
+                <div style={{fontSize:13,color:T.muted,marginBottom:20}}>
+                  Version 1.0.0 · Single-file web app · No installation required
+                </div>
                 <div style={{display:'flex',gap:10,justifyContent:'center',flexWrap:'wrap'}}>
-                  <a href="https://retroreplayhub.com" target="_blank" rel="noopener noreferrer" style={{textDecoration:'none'}}>
-                    <Btn sm v="ghost" T={T} ic="globe">retroreplayhub.com</Btn>
+                  <a href="https://retroreplayhub.com" target="_blank"
+                    rel="noopener noreferrer" style={{textDecoration:'none'}}>
+                    <Btn small icon="globe" variant="ghost" T={T}>retroreplayhub.com</Btn>
                   </a>
-                  <a href="https://github.com/retroreplayhub/reseller-os" target="_blank" rel="noopener noreferrer" style={{textDecoration:'none'}}>
-                    <Btn sm v="ghost" T={T} ic="github">View on GitHub</Btn>
+                  <a href="https://github.com/retroreplayhub/reseller-os" target="_blank"
+                    rel="noopener noreferrer" style={{textDecoration:'none'}}>
+                    <Btn small icon="github" variant="ghost" T={T}>View on GitHub</Btn>
                   </a>
                 </div>
               </div>
 
-              {/* Support disclaimer */}
-              <div style={{background:T.warning+'12',border:`1px solid ${T.warning}30`,borderRadius:18,padding:'22px 24px',boxShadow:`0 1px 4px ${T.shadow}`}}>
-                <div style={{display:'flex',gap:12,marginBottom:12}}>
-                  <Icon name="alert" size={22} color={T.warning}/>
-                  <div style={{fontSize:16,fontWeight:700,color:T.text}}>Community App — No Official Support</div>
+              <div style={{...card,background:T.warning+'0E',border:`1px solid ${T.warning}28`}}>
+                <div style={{display:'flex',gap:12,alignItems:'center',marginBottom:12}}>
+                  <Icon name="alert" size={20} color={T.warning}/>
+                  <div style={{fontSize:15,fontWeight:700,color:T.text}}>
+                    Community App — No Official Support
+                  </div>
                 </div>
-                <div style={{fontSize:14,color:T.muted,lineHeight:1.7,marginBottom:14}}>
-                  This app is provided <b style={{color:T.text}}>free of charge</b> by RetroReplayHub.com as a gift to the reseller community. We do not offer paid support, SLAs, or guaranteed response times.
+                <div style={{fontSize:13,color:T.muted,lineHeight:1.7,marginBottom:10}}>
+                  This app is provided <b style={{color:T.text}}>free of charge</b> by
+                  RetroReplayHub.com as a gift to the reseller community. No paid support,
+                  SLAs, or guaranteed response times.
                 </div>
-                <div style={{fontSize:14,color:T.muted,lineHeight:1.7,marginBottom:14}}>
-                  However, we <b style={{color:T.text}}>will do our best</b> to release frequent updates, fix bugs, and add new features based on community feedback. Watch the GitHub repo for releases.
+                <div style={{fontSize:13,color:T.muted,lineHeight:1.7,marginBottom:14}}>
+                  We <b style={{color:T.text}}>will do our best</b> to release frequent
+                  updates and fix bugs based on community feedback.
                 </div>
-                <div style={{background:T.success+'12',border:`1px solid ${T.success}28`,borderRadius:12,padding:'12px 16px',fontSize:13,color:T.success,fontWeight:600,display:'flex',alignItems:'center',gap:8}}>
+                <div style={{background:T.success+'12',border:`1px solid ${T.success}28`,
+                  borderRadius:10,padding:'10px 14px',fontSize:13,color:T.success,
+                  fontWeight:600,display:'flex',alignItems:'center',gap:8}}>
                   <Icon name="heart" size={14} color={T.success}/>
-                  If this app helps your business, consider giving it a ⭐ on GitHub and sharing it with other resellers!
+                  If this helps your business, please ⭐ it on GitHub!
                 </div>
               </div>
 
-              {/* Quick start guide */}
-              <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:18,padding:'22px 24px',boxShadow:`0 1px 4px ${T.shadow}`}}>
-                <div style={{fontSize:11,fontWeight:700,color:T.muted,letterSpacing:.8,textTransform:'uppercase',marginBottom:16}}>Quick Start Guide</div>
+              <div style={card}>
+                <div style={sectionTitle}>Quick Start Guide</div>
                 {[
-                  ['1','Set up your business profile','Fill in your name, logo, and contact info above. This appears on purchase orders and exported reports.'],
-                  ['2','Add your inventory','Go to Inventory → Add Item, or use the Barcode scan shortcut to quickly add items you source.'],
-                  ['3','Use the Profit Calculator','Before buying at a thrift store, use the Calculator to check ROI before committing to a purchase.'],
-                  ['4','Track expenses & mileage','Every sourcing trip and shipping supply purchase adds up — log them for accurate tax deductions.'],
-                  ['5','Run reports & export','At tax time, go to Reports → Export PDF to get an accountant-ready P&L statement.'],
+                  ['1','Set up your business profile',
+                    'Fill in your name, logo, and contact info — shown on purchase orders and reports.'],
+                  ['2','Add your first inventory item',
+                    'Go to Inventory → Add Item, or scan a barcode to auto-fill product details.'],
+                  ['3','Use the Profit Calculator',
+                    'Before buying at a thrift store, check your ROI including all platform fees.'],
+                  ['4','Track expenses & mileage',
+                    'Every sourcing trip and supply purchase adds up — log them for tax deductions.'],
+                  ['5','Export at tax time',
+                    'Go to Import/Export → Download your inventory, expenses, and mileage CSVs.'],
                 ].map(([n,title,desc])=>(
-                  <div key={n} style={{display:'flex',gap:14,padding:'12px 0',borderBottom:`1px solid ${T.border}`}}>
-                    <div style={{width:28,height:28,borderRadius:8,background:BRAND.yellow+'18',border:`1px solid ${BRAND.yellow}30`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,fontWeight:800,color:BRAND.yellow,flexShrink:0}}>{n}</div>
-                    <div><div style={{fontSize:14,fontWeight:600,color:T.text,marginBottom:3}}>{title}</div><div style={{fontSize:12,color:T.muted,lineHeight:1.5}}>{desc}</div></div>
+                  <div key={n} style={{display:'flex',gap:14,padding:'12px 0',
+                    borderBottom:`1px solid ${T.border}`}}>
+                    <div style={{width:28,height:28,borderRadius:8,flexShrink:0,
+                      background:BRAND.yellow+'18',border:`1px solid ${BRAND.yellow}28`,
+                      display:'flex',alignItems:'center',justifyContent:'center',
+                      fontSize:13,fontWeight:800,color:BRAND.yellow}}>{n}</div>
+                    <div>
+                      <div style={{fontSize:14,fontWeight:600,color:T.text,marginBottom:2}}>
+                        {title}
+                      </div>
+                      <div style={{fontSize:12,color:T.muted,lineHeight:1.5}}>{desc}</div>
+                    </div>
                   </div>
                 ))}
               </div>
 
-              {/* What's new */}
-              <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:18,padding:'22px 24px',boxShadow:`0 1px 4px ${T.shadow}`}}>
-                <div style={{fontSize:11,fontWeight:700,color:T.muted,letterSpacing:.8,textTransform:'uppercase',marginBottom:16}}>What's New · v1.0.0</div>
-                {['10 fully-featured pages: Dashboard, Inventory, Calculator, Expenses, Mileage, Reports, Goals, Storage, Labels, Import/Export','Business profile with custom logo — appears on purchase orders and reports','Dark & Light mode toggle','Real CSV export for inventory, expenses, and mileage logs','Label printing for Avery 5160, Avery 8160, Dymo, and Zebra formats','Goal & challenge tracking with progress bars','Aging inventory detection and alerts'].map((item,i)=>(
-                  <div key={i} style={{display:'flex',gap:10,padding:'8px 0',borderBottom:i<6?`1px solid ${T.border}`:'none',alignItems:'flex-start'}}>
-                    <Icon name="check" size={14} color={T.success} style={{marginTop:2,flexShrink:0}}/>
-                    <div style={{fontSize:13,color:T.text}}>{item}</div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Roadmap */}
-              <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:18,padding:'22px 24px',boxShadow:`0 1px 4px ${T.shadow}`}}>
-                <div style={{fontSize:11,fontWeight:700,color:T.muted,letterSpacing:.8,textTransform:'uppercase',marginBottom:16}}>Planned Features</div>
-                {['AI photo recognition & listing generator','Marketplace sync (eBay, Poshmark, Mercari API)','Purchase Order PDF generator','Barcode lookup with 690M+ product database','Bulk photo processing for inventory batches','AI pricing recommendations','Multi-user / team collaboration','Mobile PWA with offline support'].map((item,i)=>(
-                  <div key={i} style={{display:'flex',gap:10,padding:'8px 0',borderBottom:i<7?`1px solid ${T.border}`:'none',alignItems:'flex-start'}}>
-                    <Icon name="zap" size={14} color={BRAND.yellow} style={{marginTop:2,flexShrink:0}}/>
+              <div style={card}>
+                <div style={sectionTitle}>Planned Features</div>
+                {[
+                  'AI photo recognition & listing generator',
+                  'Marketplace sync (eBay, Poshmark, Mercari APIs)',
+                  'Purchase Order PDF generator',
+                  'Bulk barcode scanning with product database',
+                  'AI pricing recommendations',
+                  'Mobile PWA with offline support',
+                ].map((item,i,arr)=>(
+                  <div key={i} style={{display:'flex',gap:10,padding:'8px 0',
+                    borderBottom:i<arr.length-1?`1px solid ${T.border}`:'none',
+                    alignItems:'flex-start'}}>
+                    <Icon name="zap" size={13} color={BRAND.yellow}
+                      style={{marginTop:2,flexShrink:0}}/>
                     <div style={{fontSize:13,color:T.muted}}>{item}</div>
                   </div>
                 ))}
@@ -1739,27 +2596,28 @@ function SettingsPage({biz,setBiz,dark,setDark,T}){
             </div>
           )}
 
-          {/* Save button row at bottom */}
-          {tab!=='about'&&<div style={{display:'flex',justifyContent:'flex-end',paddingTop:8}}>
-            <Btn ic="check" T={T} onClick={save}>Save Changes</Btn>
-          </div>}
+          {/* Save button */}
+          {tab!=='about'&&(
+            <div style={{display:'flex',justifyContent:'flex-end',paddingTop:4}}>
+              <Btn icon="check" T={T} onClick={save}>Save Changes</Btn>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* ── FOOTER ── */}
-      <div style={{marginTop:32,paddingTop:20,borderTop:`1px solid ${T.border}`,textAlign:'center'}}>
-        <div style={{fontSize:12,color:T.muted,marginBottom:6}}>
+      {/* Footer */}
+      <div style={{marginTop:32,paddingTop:20,borderTop:`1px solid ${T.border}`,
+        textAlign:'center'}}>
+        <div style={{fontSize:12,color:T.muted,marginBottom:4}}>
           Made with <span style={{color:T.danger}}>♥</span> by{' '}
-          <a href="https://retroreplayhub.com" target="_blank" rel="noopener noreferrer" style={{color:BRAND.yellow,textDecoration:'none',fontWeight:600}}>RetroReplayHub.com</a>
-          {' '}· Free for the reseller community
+          <a href="https://retroreplayhub.com" target="_blank" rel="noopener noreferrer"
+            style={{color:BRAND.yellow,textDecoration:'none',fontWeight:600}}>
+            RetroReplayHub.com
+          </a>
+          {' '}· Free reseller tool · No support SLA
         </div>
-        <div style={{fontSize:11,color:T.faint||T.muted}}>
-          Retro Replay Hub v1.0.0 · Free & Open Source · No Support SLA · Updates Released as Available
-        </div>
-        <div style={{fontSize:11,color:T.faint||T.muted,marginTop:4}}>
-          <a href="https://github.com/retroreplayhub/reseller-os" target="_blank" rel="noopener noreferrer" style={{color:T.muted,textDecoration:'none'}}>GitHub</a>
-          {' · '}
-          <span style={{cursor:'pointer',color:T.muted}} onClick={()=>setTab('about')}>Help & About</span>
+        <div style={{fontSize:11,color:T.muted}}>
+          Retro Replay Hub v1.0.0 · Open source · Updates released as available
         </div>
       </div>
     </div>
@@ -1767,12 +2625,10 @@ function SettingsPage({biz,setBiz,dark,setDark,T}){
 }
 
 /* ═══════════════════════════════════════════════════════════
-   INDEXEDDB PERSISTENCE ENGINE
-   All data (inventory, expenses, mileage, goals, settings)
-   is stored locally in the browser's IndexedDB — survives
-   page refreshes, tab closes, and Cloudflare deploys.
+   INDEXEDDB PERSISTENCE LAYER
 ═══════════════════════════════════════════════════════════ */
-const DB_NAME='rrh_db', DB_VER=2;
+const DB_NAME='retroReplayHub';
+const DB_VER=1;
 
 function openDB(){
   return new Promise((res,rej)=>{
@@ -1893,7 +2749,7 @@ async function lookupBarcode(code){
 
 
 function App(){
-  // dark mode managed via darkState below
+  const [darkState,setDarkState]=useState(true);
   const T=darkState?DARK:LIGHT;
   const [page,setPage]=useState('home');
   const [col,setCol]=useState(false);
@@ -1965,7 +2821,6 @@ function App(){
     setDarkState(v);
     dbPutSetting('dark',v).catch(()=>{});
   }
-  const [darkState,setDarkState]=useState(true);
 
   useEffect(()=>{
     document.body.style.background=T.bg;
@@ -1981,9 +2836,9 @@ function App(){
         <LogoSVG size={56}/>
         <div style={{fontSize:13,color:DARK.muted,fontFamily:"'Inter',sans-serif"}}>Loading your data…</div>
         <div style={{width:200,height:3,background:DARK.surface,borderRadius:10,overflow:'hidden'}}>
-          <div style={{width:'60%',height:'100%',background:BRAND.yellow,borderRadius:10,animation:'load 1.2s ease-in-out infinite alternate'}}/>
+          <div style={{width:'60%',height:'100%',background:BRAND.yellow,borderRadius:10,animation:'loadBar 1.2s ease-in-out infinite alternate'}}/>
         </div>
-        <style>{`@keyframes load{from{width:15%}to{width:85%}}`}</style>
+        <style></style>
       </div>
     );
   }
@@ -2000,7 +2855,7 @@ function App(){
     goals:<GoalsPage goals={goals} setGoals={setGoals} T={T}/>,
     storage:<StoragePage inventory={inventory} T={T}/>,
     labels:<LabelsPage inventory={inventory} T={T}/>,
-    export:<ExportPage inventory={inventory} expenses={expenses} mileage={mileage} T={T}/>,
+    export:<ExportPage inventory={inventory} setInventory={setInventory} expenses={expenses} mileage={mileage} T={T}/>,
     settings:<SettingsPage biz={biz} setBiz={setBiz} dark={darkState} setDark={setDark} T={T}/>,
   };
 
